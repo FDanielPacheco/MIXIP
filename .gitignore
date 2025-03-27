@@ -30,3 +30,14 @@
 *.exe
 *.out
 *.app
+
+
+# Folders
+build/
+.vscode/
+
+# Files
+include/cobs.h
+include/ringbuffer.h
+src/ringbuffer.c 
+src/cobs.c 
