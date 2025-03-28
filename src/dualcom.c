@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
+#include <sys/mman.h>
 
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -84,8 +85,6 @@ struct arguments{
 #define E_EOF              S_SOF
 
 #define TIMEOUT            5000
-
-#define ACTION             1
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Data structures
@@ -166,9 +165,9 @@ serial_connect( const char * pathname ){
     return NULL;
   }
 
-  serial_manager_t * mn = (serial_manager_t *) malloc( sizeof( serial_manager_t ) );
-  if( !mn ){
-    perror("malloc");
+  serial_manager_t * mn = (serial_manager_t *) mmap( NULL, sizeof( serial_manager_t ), PROT_WRITE | PROT_READ , MAP_ANONYMOUS | MAP_SHARED , -1 , 0 );
+  if( MAP_FAILED == mn ){
+    perror("mmap");
     return NULL;
   }
 
@@ -268,7 +267,7 @@ rawsocket( const char * interface ){
   socket_address.sll_family = AF_PACKET;
   socket_address.sll_protocol = htons(ETH_P_ALL); 
   socket_address.sll_ifindex = ifindex;
-  if( 0 > bind( rs, (struct sockaddr *)&socket_address, sizeof(socket_address) ) ){
+  if( 0 > bind( rs, (struct sockaddr *) &socket_address, sizeof(socket_address) ) ){
     perror("Socket bind failed");
     close( rs );
     return -1;
@@ -318,7 +317,16 @@ main( int argc, char **argv ){
 
   flag_t  flag = {0};
 
-  if( ACTION ){
+  // Sliding window protocol (GoBackN)
+  uint8_t window_n = 3;
+  uint8_t window_size = (uint8_t) pow( 2, window_n) - 1;
+  uint8_t window_selector = 0;
+  uint8_t window_ack = 0;
+
+  // Double process usage
+  pid_t proc = fork( );
+
+  if( !proc ){
     for( ; ; ){
       if( !serial_wait( mn ) ){
         if( flag.ongoing ){
@@ -329,13 +337,13 @@ main( int argc, char **argv ){
         }
       }
   
-      if( 0 < ( chunk_len = serial_available( mn->sr ) ) ){
-        chunk_len = serial_read( (char *) chunk, sizeof(chunk), 0, chunk_len, mn->sr );
+      while( 0 < ( chunk_len = serial_available( mn->sr ) ) ){
+        if( CHK_SIZE < chunk_len )
+          chunk_len = serial_read( (char *) chunk, sizeof(chunk), 0, CHK_SIZE, mn->sr );
+        else
+          chunk_len = serial_read( (char *) chunk, sizeof(chunk), 0, chunk_len, mn->sr );
 
-        printf("Length:%d...\n", chunk_len );
-        printPacket( chunk, chunk_len, "Chunk", 10 );
-
-        if( !chunk_len ){
+          if( !chunk_len ){
           printf("Unkown error...\n");
           exit( EXIT_FAILURE );
         }
@@ -357,17 +365,16 @@ main( int argc, char **argv ){
           }
           
           if( flag.sr_packet && S_EOF == chunk[0] && !flag.sr_first ){     
-            printPacket( serial_packet, serial_packet_len, "Serial Encode", 10 );
             cobs_ret_t result = cobs_decode_tinyframe( &serial_packet[1], serial_packet_len - 1 );            
 
             if( COBS_RET_SUCCESS == result ){
               flag.sr_packet = 0;
-              
-              serial_packet_len -= 3;
-              memmove( serial_packet, &serial_packet[2], serial_packet_len );
-              memset( &serial_packet[serial_packet_len], 0, 3 );                        
 
-              printPacket( serial_packet, serial_packet_len, "Serial Decode", 10 );
+              ( window_ack + 1 > window_size ) ? window_ack = 0 : window_ack++ ;
+
+              serial_packet_len -= 4;
+              memmove( serial_packet, &serial_packet[3], serial_packet_len );
+              memset( &serial_packet[serial_packet_len], 0, 4 );                        
 
               for( uint8_t k = 0 ; k < serial_packet_len ; ++k ){
                 if( !flag.et_packet && E_SOF == serial_packet[k] ){
@@ -395,16 +402,19 @@ main( int argc, char **argv ){
                   }
                   else printf("Error decoding the ethernet packet...\n");        
                 }
-
+  
                 if( flag.et_first )
                   flag.et_first = 0;
     
               }          
-            }
+            }              
             else{
               printf("Error decoding the serial packet...\n");
-              exit( EXIT_FAILURE );
+              flag.et_packet = 0;
+              flag.ongoing = 0;
+              ethernet_packet_len = 0;  
             } 
+
 
           }
           
@@ -438,7 +448,7 @@ main( int argc, char **argv ){
       printPacket( ethernet_packet_encoded, ethernet_packet_encoded_len, "Ethernet Encoded", 10 );
 
       if( COBS_RET_SUCCESS == result ){      
-        size_t ser_payload_size = SER_PCKT_SIZE - 3;
+        size_t ser_payload_size = SER_PCKT_SIZE - 4;
         serial_packet[ 0 ] = E_EOF;
     
         int ser_nframes = (int) ceil( (float) ethernet_packet_encoded_len / (float) ser_payload_size );
@@ -457,11 +467,16 @@ main( int argc, char **argv ){
             else
               memcpy( serial_packets[j], &ethernet_packet_encoded[index], ser_payload_size );
           }
-      
+          
           for( int j = 0 ; j < ser_nframes ; ++j ){
             serial_packet[ 1 ] = COBS_TINYFRAME_SENTINEL_VALUE;
             serial_packet[ SER_PCKT_SIZE - 1 ] = COBS_TINYFRAME_SENTINEL_VALUE;
-            memcpy( &serial_packet[2], serial_packets[j], ser_payload_size );
+
+            serial_packet[ 2 ] = ((window_ack & 0x07) << 3) | (window_selector & 0x07);
+            ( window_selector + 1 > window_size ) ? window_selector = 0 : window_selector++ ;
+
+            memcpy( &serial_packet[3], serial_packets[j], ser_payload_size );
+            printPacket( serial_packet, sizeof(serial_packet), "Serial Decoded", 10 );
             result = cobs_encode_tinyframe( &serial_packet[1], sizeof(serial_packet) - 1 );
 
             printPacket( serial_packet, sizeof(serial_packet), "Serial Encoded", 10 );
@@ -471,12 +486,6 @@ main( int argc, char **argv ){
               fflush( mn->sr->fp );
               printf( "Sending (%d) a serial packet encoded with %ld bytes...\n", j, len );
             } 
-            else
-            if( COBS_RET_ERR_BAD_ARG == result )
-              printf( "Failed bad arg (%d) to encode...\n", j );
-            else
-            if( COBS_RET_ERR_BAD_PAYLOAD== result )
-              printf( "Failed bad payload (%d) to encode...\n", j );
             else
               printf( "Failed (%d) to encode...\n", j );
           }

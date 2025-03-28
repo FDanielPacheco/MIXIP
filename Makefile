@@ -1,4 +1,4 @@
-CC = gcc
+CC = gcc -std=gnu17
 
 CFLAGS = -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude 
 LDFLAGS = -pthread -lrt -lm -lserialposix
