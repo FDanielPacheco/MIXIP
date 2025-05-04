@@ -446,12 +446,12 @@ main( int argc, char **argv ){
           serial_packet[ serial_packet_len++ ] = chunk[0];
         }
 
-		if( flag.sr_packet && S_EOF == chunk[0] && serial_packet_len == 2 ){
-		  printf("Out of sync, trying to sync...\n");
-		  serial_packet_len --;
+        if( flag.sr_packet && S_EOF == chunk[0] && serial_packet_len == 2 ){
+          printf("Out of sync, trying to sync...\n");
+          serial_packet_len --;
           flag.sr_first = 1;
-		}
-        
+        }
+            
         if( flag.sr_packet && S_EOF == chunk[0] && !flag.sr_first ){     
           cobs_ret_t result = cobs_decode_tinyframe( &serial_packet[1], serial_packet_len - 1 );            
 
@@ -609,7 +609,7 @@ main( int argc, char **argv ){
 
     printf("Sending serial port packets, process with PID: %d...\n", getpid( ) );
     for( ; ; ){
-	  uint8_t nframes = 0;
+	    uint8_t nframes = 0;
       for( ; ; ){
         sem_wait( &queue->sem );
         if( 0 < queue->nframes ){
@@ -622,8 +622,6 @@ main( int argc, char **argv ){
         sem_post( &queue->sem );
         usleep( 10000 );
       }
-
-	  printf("Going from %d to %d (%d)...\n", queue->tail, nframes, nframes + queue->tail );
 
       for( size_t i = 0 ; i < nframes ; ++i ){
         sem_wait( &queue->sem );
@@ -638,7 +636,6 @@ main( int argc, char **argv ){
         else 
           queue->tail ++;        
 
-		printf("Tail:%d, Head:%d\n", queue->tail, queue->head );
         sem_post( &queue->sem );
            
         for( size_t j = 0 ; j < ef.nsegments ; ++j ){
