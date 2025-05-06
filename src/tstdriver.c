@@ -129,7 +129,7 @@ cleanup( struct memshared * shr1, struct memshared * shr2, serial_manager_t * se
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 void
-signalhandler( int signum ){
+signalhandler( int signum __attribute__((unused)) ){
   signal_flag = 1;
 }
 
@@ -168,6 +168,13 @@ main( int argc, char **argv ){
   struct arguments arguments = { .name = "", .serial = "" };
   argp_parse( &argp, argc, argv, 0, 0, &arguments );
 
+  // Check the parameters
+  if( !strcmp( arguments.name, "" ) || !strcmp( arguments.serial, "" ) ){
+    errno = EINVAL;
+    perror("missing arguments");
+    return EXIT_FAILURE;
+  }
+
   // Establish the signal handler
   struct sigaction act;
   act.sa_handler = signalhandler;
@@ -178,12 +185,6 @@ main( int argc, char **argv ){
       -1 == sigaction( SIGINT, &act, NULL )  ||
       -1 == sigaction( SIGQUIT, &act, NULL ) ){
     perror( "sigaction" );
-    return EXIT_FAILURE;
-  }
-
-  
-  if( !strcmp( arguments.name, "") ){
-    printf("Specifie a name for the instance...\n");
     return EXIT_FAILURE;
   }
   
@@ -272,7 +273,7 @@ main( int argc, char **argv ){
       }
     }
     else{
-      while( 1 != (result = serial_wait( serial, -1 ) ) ){
+      while( 1 != (result = serial_wait( serial, pollrate ) ) ){
         uint8_t error = 0;
   
         if( -1 == result ){
@@ -294,16 +295,11 @@ main( int argc, char **argv ){
       
       sem_post( &tx.buf->empty);
       sem_wait( &tx.buf->available );
-     
+          
       size_t len = serial_write( &serial->sr, tx.buf->data , tx.buf->len );
-      if( -1 == serial_flush( &serial->sr, TCOFLUSH ) ){
-        perror("serial_flush");
-        serial_close( &serial->sr );
-        cleanup( &tx, NULL, serial );
-        return EXIT_FAILURE;
-      }
+      fflush( serial->sr.fp );
     }
-
+      
     if( signal_flag ){
       printf("[%d] Driver interrupted with signal...\n", getpid( ) );
       serial_close( &serial->sr );

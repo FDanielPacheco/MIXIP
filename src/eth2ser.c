@@ -56,9 +56,8 @@
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
 struct arguments{
-  char *name;                          // Instance name
-  char *interface;                     // Network interaface, e.g, eth0
-  char *serial;                        // Serial port file path name, e.g., ttyUSB0
+  char * name;                         // Instance name
+  char * interface;                    // Network interaface file descriptor
 };
   
 typedef struct{
@@ -103,12 +102,11 @@ void cleanup( buffer_t * buf, mem_queue_t * queue );
 const char  * argp_program_version     = "eth2ser 1.0";
 const char  * argp_program_bug_address = "fabio.d.pacheco@inesctec.pt";
 static char   doc[ ]                   = "Ethernet to Serial, is a program that captures and encodes information from the network interface and sends to the serial port.";
-static char   args_doc[ ]              = "Instance-Name Network-Interface Serial-Port";
+static char   args_doc[ ]              = "Instance-Name Network-Interface-FileDescriptor";
 
 static struct argp_option options[ ] = {
-  {"name",      'n', "<instance-name>" , 0, "The instance name"                                                      , 0 },
-  {"interface", 'i', "<interface>"     , 0, "The ethernet interface for the ser2eth to send information"             , 0 },
-  {"serial",    's', "<tty-file>"      , 0, "The serial port file for the ser2eth to capture and decode information" , 0 },
+  {"name",      'n', "<instance-name>" , 0, "The instance name"                           , 0 },
+  {"interface", 'i', "<interface>"     , 0, "A file descriptor for the network interface" , 0 },
   { 0 }
 };
   
@@ -129,10 +127,6 @@ parseArgs( int key, char * arg, struct argp_state * state ){
 
     case 'i':
       arguments->interface = arg;
-      break;
-
-    case 's':
-      arguments->serial = arg;
       break;
 
     case ARGP_KEY_ARG:
@@ -215,8 +209,15 @@ printPacket( const uint8_t * pk, const size_t len, const char * cover, int colum
 
 int
 main( int argc, char **argv ){
-  struct arguments arguments = { .name = "", .interface = "", .serial = "" };
+  struct arguments arguments = { .name = "", .interface = "" };
   argp_parse( &argp, argc, argv, 0, 0, &arguments );
+
+  // Check the parameters
+  if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) ){
+    errno = EINVAL;
+    perror("missing arguments");
+    return EXIT_FAILURE;
+  }
 
   // Shared memory definitions
   char path[ 128 ];
@@ -230,9 +231,9 @@ main( int argc, char **argv ){
   }
   
   // Connect to the interface
-  int nic = rawsocket( arguments.interface );
-  if( -1 == nic ){
-    perror("rawsocket");
+  int nic = atoi( arguments.interface );
+  if( 0 < nic ){
+    perror("atoi");
     cleanup( serial, NULL );
     return EXIT_FAILURE;
   }

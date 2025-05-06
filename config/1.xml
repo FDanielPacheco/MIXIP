@@ -1,0 +1,17 @@
+<mixip>
+  <serial>
+    <tx>
+      <name>lora1</name>
+      <device>/dev/ttyUSB0</device>
+    </tx>
+    <rx>
+      <name>lora2</name>
+      <device>/dev/ttyUSB1</device>
+    </rx>
+  </serial>
+  <network>
+    <default>
+      <name>eth0</name>
+    </default>
+  </network>
+</mixip>
