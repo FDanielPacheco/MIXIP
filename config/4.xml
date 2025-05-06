@@ -1,0 +1,16 @@
+<mixip>
+  <serial>
+    <default>
+      <name>lora1</name>
+      <device>/dev/ttyACM0</device>
+    </default>
+  </serial>
+  <network>
+    <tx>
+      <name>dummy0</name>
+    </tx>
+    <rx>
+      <name>dummy1</name>
+    </rx>
+  </network>
+</mixip>

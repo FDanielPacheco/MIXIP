@@ -159,11 +159,11 @@ get_xml_data( const char *filename, cfgxml_t * data ){
     }
   }
 
-  xmlNode * tx_node = NULL;
-  xmlNode * rx_node = NULL;
-  xmlNode * def_node = NULL;
-  
   for( ; ; ){
+    xmlNode * tx_node = NULL;
+    xmlNode * rx_node = NULL;
+    xmlNode * def_node = NULL;
+
     if( serial_node ){
       for( xmlNode * current_node = serial_node->children ; current_node != NULL ; current_node = current_node->next ){
         if( XML_ELEMENT_NODE == current_node->type ){
@@ -262,6 +262,10 @@ get_xml_data( const char *filename, cfgxml_t * data ){
   }
 
   for( ; ; ){
+    xmlNode * tx_node = NULL;
+    xmlNode * rx_node = NULL;
+    xmlNode * def_node = NULL;
+
     if( network_node ){
       for( xmlNode * current_node = network_node->children ; current_node != NULL ; current_node = current_node->next ){
         if( XML_ELEMENT_NODE == current_node->type ){
@@ -460,19 +464,25 @@ main( int argc, char **argv ){
     int nic_tx = rawsocket( cfg.nic.tx );
     if( -1 == nic_tx ){
       perror("rawsocket");
-      return EXIT_FAILURE;
     }
 
     int nic_rx = rawsocket( cfg.nic.rx );
     if( -1 == nic_rx ){
       perror("rawsocket");
-      return EXIT_FAILURE;
     }
     
-    nic1 = nic_tx;
-    strncpy( name1, cfg.dev.tx.name, sizeof(name1) );
-    nic2 = nic_rx;
-    strncpy( name2, cfg.dev.tx.name, sizeof(name2) );
+    if( cfg.devopt ){
+      nic1 = nic_tx;
+      nic2 = nic_rx;
+      strncpy( name1, cfg.dev.tx.name, sizeof(name1) );
+      strncpy( name2, cfg.dev.rx.name, sizeof(name2) );
+    }
+    else{
+      nic1 = nic_tx;
+      nic2 = nic_rx;
+      strncpy( name1, cfg.dev.def.name, sizeof(name1) );
+      strncpy( name2, cfg.dev.def.name, sizeof(name2) );
+    }
   }
   else{
     printf("Have to initialize one network interface instance ...\n");
@@ -481,7 +491,6 @@ main( int argc, char **argv ){
     int nic = rawsocket( cfg.nic.def );
     if( -1 == nic ){
       perror("rawsocket");
-      return EXIT_FAILURE;
     }    
     
     nic1 = nic;
@@ -496,10 +505,10 @@ main( int argc, char **argv ){
       strncpy( name2, cfg.dev.def.name, sizeof(name2) );
     }
   }
-  
   char snic1 [ 16 ];
   snprintf( snic1, sizeof(snic1), "%d", nic1 );
   printf("Opening eth2ser: ./%s %s %s %s %s\n", path_eth2ser, "-i", snic1, "-n", name1 );
+
   opened_proc[ n_proc ] = fork( );
   if( !opened_proc[ n_proc ] ){
     if( -1 == execl( path_eth2ser, 
