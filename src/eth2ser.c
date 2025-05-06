@@ -232,7 +232,7 @@ main( int argc, char **argv ){
   
   // Connect to the interface
   int nic = atoi( arguments.interface );
-  if( 0 < nic ){
+  if( !nic ){
     perror("atoi");
     cleanup( serial, NULL );
     return EXIT_FAILURE;

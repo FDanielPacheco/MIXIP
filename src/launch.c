@@ -360,7 +360,7 @@ main( int argc, char **argv ){
 
   // Check the current parameters to decide the flow of launch
   cfgxml_t cfg;
-  if( 1 > get_xml_data( argv[1], &cfg ) ){
+  if( 1 > get_xml_data( arguments.path, &cfg ) ){
     perror("failed to parse");
     return -1;
   }
@@ -383,45 +383,66 @@ main( int argc, char **argv ){
 
   const char path_tstdriver[ ] = "tstdriver.out";
   if( cfg.devopt ){
+    printf("Have to initialize two serial interface instances ...\n");
+    printf("tx(%s): %s, rx(%s): %s ...\n", cfg.dev.tx.name, cfg.dev.tx.path, cfg.dev.rx.name, cfg.dev.rx.path );
+
+    printf("Opening tstdriver: ./%s %s %s %s %s\n", path_tstdriver, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_tstdriver, 
-                        "-s",
-                        cfg.dev.tx.path,
-                        "-n",
-                        cfg.dev.tx.name,
-                        (char *)NULL
-      ))
+      if( -1 == execl( path_tstdriver,
+                       path_tstdriver,
+                       "-s",
+                       cfg.dev.tx.path,
+                       "-n",
+                       cfg.dev.tx.name,
+                       (char *)NULL
+      )){
+        printf("[%d] ", getpid( ));
+        fflush( stdout );
         perror( "execl" );
+      }
       return EXIT_FAILURE;    
     }
     n_proc ++;
 
+    printf("Opening tstdriver: ./%s %s %s %s %s\n", path_tstdriver, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_tstdriver, 
-                        "-s",
-                        cfg.dev.rx.path,
-                        "-n",
-                        cfg.dev.rx.name,
-                        (char *)NULL
-      ))
+      if( -1 == execl( path_tstdriver,
+                       path_tstdriver,
+                       "-s",
+                       cfg.dev.rx.path,
+                       "-n",
+                       cfg.dev.rx.name,
+                       (char *)NULL
+      )){
+        printf("[%d] ", getpid( ));
+        fflush( stdout );
         perror( "execl" );
+      }
       return EXIT_FAILURE;    
     }    
     n_proc ++;
   }
   else{
+    printf("Have to initialize one serial interface instances ...\n");
+    printf("default(%s): %s ...\n", cfg.dev.def.name, cfg.dev.def.path );
+    printf("Opening tstdriver: ./%s %s %s %s %s\n", path_tstdriver, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name );
+
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
       if( -1 == execl( path_tstdriver, 
-                        "-s",
-                        cfg.dev.def.path,
-                        "-n",
-                        cfg.dev.def.name,
-                        (char *)NULL
-      ))
+                       path_tstdriver,
+                       "-s",
+                       cfg.dev.def.path,
+                       "-n",
+                       cfg.dev.def.name,
+                       (char *)NULL
+      )){
+        printf("[%d] ", getpid( ));
+        fflush( stdout );
         perror( "execl" );
+      }
       return EXIT_FAILURE;    
     }    
     n_proc ++;
@@ -475,31 +496,45 @@ main( int argc, char **argv ){
       strncpy( name2, cfg.dev.def.name, sizeof(name2) );
     }
   }
-
+  
+  char snic1 [ 16 ];
+  snprintf( snic1, sizeof(snic1), "%d", nic1 );
+  printf("Opening eth2ser: ./%s %s %s %s %s\n", path_eth2ser, "-i", snic1, "-n", name1 );
   opened_proc[ n_proc ] = fork( );
   if( !opened_proc[ n_proc ] ){
     if( -1 == execl( path_eth2ser, 
-                      "-i",
-                      nic1,
-                      "-n",
-                      name1,
-                      (char *)NULL
-    ))
+                     path_eth2ser,
+                     "-i",
+                     snic1,
+                     "-n",
+                     name1,
+                     (char *)NULL
+    )){
+      printf("[%d] ", getpid( ));
+      fflush( stdout );
       perror( "execl" );
+    }
     return EXIT_FAILURE;    
   }    
   n_proc ++;
 
+  char snic2 [ 16 ];
+  snprintf( snic2, sizeof(snic2), "%d", nic2 );
+  printf("Opening ser2eth: ./%s %s %s %s %s\n", path_ser2eth, "-i", snic2, "-n", name2 );
   opened_proc[ n_proc ] = fork( );
   if( !opened_proc[ n_proc ] ){
-    if( -1 == execl( path_ser2eth, 
-                      "-i",
-                      nic2,
-                      "-n",
-                      name2,
-                      (char *)NULL
-    ))
+    if( -1 == execl( path_ser2eth,
+                     path_ser2eth, 
+                     "-i",
+                     snic2,
+                     "-n",
+                     name2,
+                     (char *)NULL
+    )){
+      printf("[%d] ", getpid( ));
+      fflush( stdout );
       perror( "execl" );
+    }
     return EXIT_FAILURE;    
   }    
   n_proc ++;    
@@ -510,7 +545,7 @@ main( int argc, char **argv ){
 
     if( signal_flag ){
       for( int i = 0 ; i < n_proc ; ++i ){
-        printf("[%d] Killing the process %d...", getpid( ), opened_proc[i] );
+        printf("[%d] Killing the process %d...\n", getpid( ), opened_proc[i] );
         if( -1 == kill( opened_proc[i], SIGTERM ) )
           perror( "kill" );
         else

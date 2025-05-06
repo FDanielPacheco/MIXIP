@@ -2,12 +2,12 @@
   <serial>
     <default>
       <name>lora1</name>
-      <device>/dev/ttyUSB0</device>
+      <device>/dev/ttyACM0</device>
     </default>
   </serial>
   <network>
     <default>
-      <name>eth0</name>
+      <name>dummy0</name>
     </default>
   </network>
 </mixip>
