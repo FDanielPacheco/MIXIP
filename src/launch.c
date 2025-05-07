@@ -385,16 +385,16 @@ main( int argc, char **argv ){
   pid_t opened_proc[ 4 ];
   int status, n_proc = 0;
 
-  const char path_tstdriver[ ] = "tstdriver.out";
+  const char path_serbroker[ ] = "serbroker.out";
   if( cfg.devopt ){
     printf("Have to initialize two serial interface instances ...\n");
     printf("tx(%s): %s, rx(%s): %s ...\n", cfg.dev.tx.name, cfg.dev.tx.path, cfg.dev.rx.name, cfg.dev.rx.path );
 
-    printf("Opening tstdriver: ./%s %s %s %s %s\n", path_tstdriver, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name );
+    printf("Opening serbroker: ./%s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_tstdriver,
-                       path_tstdriver,
+      if( -1 == execl( path_serbroker,
+                       path_serbroker,
                        "-s",
                        cfg.dev.tx.path,
                        "-n",
@@ -409,11 +409,11 @@ main( int argc, char **argv ){
     }
     n_proc ++;
 
-    printf("Opening tstdriver: ./%s %s %s %s %s\n", path_tstdriver, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name );
+    printf("Opening serbroker: ./%s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_tstdriver,
-                       path_tstdriver,
+      if( -1 == execl( path_serbroker,
+                       path_serbroker,
                        "-s",
                        cfg.dev.rx.path,
                        "-n",
@@ -431,12 +431,12 @@ main( int argc, char **argv ){
   else{
     printf("Have to initialize one serial interface instances ...\n");
     printf("default(%s): %s ...\n", cfg.dev.def.name, cfg.dev.def.path );
-    printf("Opening tstdriver: ./%s %s %s %s %s\n", path_tstdriver, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name );
+    printf("Opening serbroker: ./%s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name );
 
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_tstdriver, 
-                       path_tstdriver,
+      if( -1 == execl( path_serbroker, 
+                       path_serbroker,
                        "-s",
                        cfg.dev.def.path,
                        "-n",

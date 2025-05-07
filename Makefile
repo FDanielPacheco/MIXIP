@@ -101,8 +101,8 @@ TARGET1_OBJ = $(BUILD_DIR)/$(TARGET1_NAME).o $(BUILD_DIR)/rawsoc.o $(BUILD_DIR)/
 TARGET2_OBJ = $(BUILD_DIR)/$(TARGET2_NAME).o $(COMMON_LIBS_O)
 TARGET2_OUT = $(BUILD_DIR)/$(TARGET2_NAME).out
 
-# --- Target 3: test driver ---
-TARGET3_NAME = tstdriver
+# --- Target 3: serial broker ---
+TARGET3_NAME = serbroker
 TARGET3_SRC = $(SRC_DIR)/$(TARGET3_NAME).c
 TARGET3_LL = $(LLVM_IR_DIR)/$(TARGET3_NAME).ll
 TARGET3_S = $(ASM_DIR)/$(TARGET3_NAME).s
