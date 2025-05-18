@@ -3,6 +3,7 @@
     <default>
       <name>lora1</name>
       <device>/dev/ttyACM0</device>
+      <driver>./libdefault.so</driver>
     </default>
   </serial>
   <network>

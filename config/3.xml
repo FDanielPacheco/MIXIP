@@ -3,10 +3,12 @@
     <tx>
       <name>lora1</name>
       <device>/dev/ttyUSB0</device>
+      <driver>./libdefault.so</driver>
     </tx>
     <rx>
       <name>lora2</name>
       <device>/dev/ttyUSB1</device>
+      <driver>./libdefault.so</driver>
     </rx>
   </serial>
   <network>

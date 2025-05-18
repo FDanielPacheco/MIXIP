@@ -48,6 +48,7 @@ struct arguments{
 struct comms{
   char name[NAME_MAX];  
   char path[NAME_MAX];
+  char driver[NAME_MAX];
 };
 
 struct device{
@@ -179,6 +180,7 @@ get_xml_data( const char *filename, cfgxml_t * data ){
       if( def_node ){
         xmlNode * name_node = NULL;
         xmlNode * device_node = NULL;
+        xmlNode * driver_node = NULL;
 
         for( xmlNode * current_node = def_node->children ; current_node != NULL ; current_node = current_node->next ){
           if( XML_ELEMENT_NODE == current_node->type ){
@@ -186,10 +188,12 @@ get_xml_data( const char *filename, cfgxml_t * data ){
               name_node = current_node;
             if( !strcmp( (char *)current_node->name, "device" ) )
               device_node = current_node;
+            if( !strcmp( (char *)current_node->name, "driver" ) )
+              driver_node = current_node;
           }
         }
 
-        if( !name_node || !device_node ){
+        if( !name_node || !device_node || !driver_node ){
           xmlFreeDoc( docfile );
           return 0;      
         }
@@ -203,7 +207,11 @@ get_xml_data( const char *filename, cfgxml_t * data ){
           content = xmlNodeGetContent( device_node );
           if( NULL != content )
             strncpy( data->dev.def.path, (const char *) content, sizeof( data->dev.def.path ) );
-
+ 
+          content = xmlNodeGetContent( driver_node );
+          if( NULL != content )
+            strncpy( data->dev.def.driver, (const char *) content, sizeof( data->dev.def.driver ) );
+  
           xmlFree( content );
           data->devopt = 0;
           break;         
@@ -219,6 +227,7 @@ get_xml_data( const char *filename, cfgxml_t * data ){
         if( nodes[ i ] ){
           xmlNode * name_node = NULL;
           xmlNode * device_node = NULL;
+          xmlNode * driver_node = NULL;
 
           for( xmlNode * current_node = nodes[ i ]->children ; current_node != NULL ; current_node = current_node->next ){
             if( XML_ELEMENT_NODE == current_node->type ){
@@ -226,10 +235,12 @@ get_xml_data( const char *filename, cfgxml_t * data ){
                 name_node = current_node;
               if( !strcmp( (char *)current_node->name, "device" ) )
                 device_node = current_node;
+              if( !strcmp( (char *)current_node->name, "driver" ) )
+                driver_node = current_node;
             }
           }
 
-          if( !name_node || !device_node ){
+          if( !name_node || !device_node || !driver_node ){
             xmlFreeDoc( docfile );
             return 0;      
           }
@@ -243,7 +254,11 @@ get_xml_data( const char *filename, cfgxml_t * data ){
             content = xmlNodeGetContent( device_node );
             if( NULL != content )
               strncpy( comms[ i ]->path, (const char *) content, sizeof( comms[ i ]->path ) );
-  
+
+            content = xmlNodeGetContent( driver_node );
+            if( NULL != content )
+              strncpy( comms[ i ]->driver, (const char *) content, sizeof( comms[ i ]->driver ) );
+                
             xmlFree( content );
             both ++;
           }
@@ -390,7 +405,7 @@ main( int argc, char **argv ){
     printf("Have to initialize two serial interface instances ...\n");
     printf("tx(%s): %s, rx(%s): %s ...\n", cfg.dev.tx.name, cfg.dev.tx.path, cfg.dev.rx.name, cfg.dev.rx.path );
 
-    printf("Opening serbroker: ./%s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name );
+    printf("Opening serbroker: ./%s %s %s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name, "-d", cfg.dev.tx.driver );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
       if( -1 == execl( path_serbroker,
@@ -399,6 +414,8 @@ main( int argc, char **argv ){
                        cfg.dev.tx.path,
                        "-n",
                        cfg.dev.tx.name,
+                       "-d",
+                       cfg.dev.tx.driver,
                        (char *)NULL
       )){
         printf("[%d] ", getpid( ));
@@ -409,7 +426,7 @@ main( int argc, char **argv ){
     }
     n_proc ++;
 
-    printf("Opening serbroker: ./%s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name );
+    printf("Opening serbroker: ./%s %s %s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name, "-d", cfg.dev.rx.driver );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
       if( -1 == execl( path_serbroker,
@@ -418,6 +435,8 @@ main( int argc, char **argv ){
                        cfg.dev.rx.path,
                        "-n",
                        cfg.dev.rx.name,
+                       "-d",
+                       cfg.dev.rx.driver,
                        (char *)NULL
       )){
         printf("[%d] ", getpid( ));
@@ -431,8 +450,7 @@ main( int argc, char **argv ){
   else{
     printf("Have to initialize one serial interface instances ...\n");
     printf("default(%s): %s ...\n", cfg.dev.def.name, cfg.dev.def.path );
-    printf("Opening serbroker: ./%s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name );
-
+    printf("Opening serbroker: ./%s %s %s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name, "-d", cfg.dev.def.driver );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
       if( -1 == execl( path_serbroker, 
@@ -441,6 +459,8 @@ main( int argc, char **argv ){
                        cfg.dev.def.path,
                        "-n",
                        cfg.dev.def.name,
+                       "-d",
+                       cfg.dev.def.driver,
                        (char *)NULL
       )){
         printf("[%d] ", getpid( ));

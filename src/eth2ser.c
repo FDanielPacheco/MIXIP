@@ -42,6 +42,7 @@
 #include <shmbuf.h>
 #include <libserialposix.h>
 #include <time.h>
+#include <mixip.h>
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Definitions
@@ -77,13 +78,6 @@ typedef struct{
   uint8_t      tail;
   sem_t        sem;
 } mem_queue_t ;
-
-typedef struct{
-  uint8_t data[ BUFSIZ ];              // Buffer that will contain the serial port received information
-  size_t  len;                         // Current length of data
-  sem_t   available;                   // Semaphore used to advertise that information is available
-  sem_t   empty;                       // Semaphore used to stop a process while the other is processing the information
-} buffer_t ;
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Prototypes

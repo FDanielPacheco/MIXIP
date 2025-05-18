@@ -69,7 +69,7 @@ CFLAGS = -std=gnu99 -I/usr/local/include/ -I/usr/include/libxml2
 CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude
 OPT_FLAGS = -O2
 ASM_FLAGS =
-LD_FLAGS = -no-pie -L/usr/local/lib/$(TARGET_ARCH_CC)/
+LD_FLAGS = -no-pie # -L/usr/local/lib/$(TARGET_ARCH_CC)/
 LD_LIB += -lc -lpthread -lrt -lm -lserialposix -lxml2
 
 # Source and build directories
