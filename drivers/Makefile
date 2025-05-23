@@ -15,7 +15,6 @@ endif
 	@echo "Creating a new driver library $(name)..."
 	@mkdir -p ./$(name)
 	@echo   "#include <mixip.h>" \
-			"\n#include <libserialposix.h>" \
 			"\n" \
 			"\nint dsetup( serial_manager_t * serial ){\n" \
 			" // Runs first and once...\n" \

@@ -31,7 +31,7 @@
 #include <argp.h>
 #include <unistd.h>
 #include <semaphore.h>
-#include <libserialposix.h>
+#include <serialposix.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -179,33 +179,6 @@ load_driver( const char * path, struct driver * dev ){
   }  
 
   return handle;
-}
-
-
-/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-void
-printPacket( const uint8_t * pk, const size_t len, const char * cover, int columnsize ){
-  if( !pk ) return;
-
-  time_t t;
-  struct tm * info;
-  time( &t );
-  info = localtime( &t );
-  char tm[12]; strftime( tm, sizeof(tm), "%H:%M:%S", info );
-
-  int cont = columnsize;
-  printf("<-----%s Packet [%s]----->\n", cover, tm );
-  for( size_t i = 0 ; i < len ; ++i ){
-    if( !cont || (i + 1 == len) ){
-      printf( "%04ld:%02X\n", i, pk[i] );
-      cont = columnsize;
-    }
-    else {
-      printf( "%04ld:%02X ", i, pk[i] );
-      cont--;
-    }
-  }
-  printf("<-----%s Packet----->\n\n", cover);
 }
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************

@@ -1,5 +1,5 @@
 #include <mixip.h> 
-#include <libserialposix.h> 
+#include <serialposix.h> 
  
 int dsetup( serial_manager_t * serial ){
   // Runs first and once...
