@@ -153,7 +153,9 @@ load_driver( const char * path, struct driver * dev ){
   }
 
   char * err = NULL;
-  void * handle = dlopen( path, RTLD_NOW );
+  void * handle = dlopen( path, RTLD_NOW | RTLD_GLOBAL );
+  //   Check for all dependencies_/           \
+  //                                           \_Made available for symbol resolution of subsequently loaded shared objects...
   if( !handle ){
     fprintf( stderr, "[%d] error dlopen %s...\n", getpid( ), dlerror( ) );
     return NULL;

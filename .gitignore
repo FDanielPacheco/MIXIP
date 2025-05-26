@@ -31,10 +31,10 @@
 *.out
 *.app
 
-
 # Folders
 build/
 .vscode/
+release/
 
 # Files
 include/cobs.h
@@ -44,3 +44,7 @@ src/cobs.c
 src/etframequeue.c
 Makefile.bk
 src/.bk
+
+# Allow inside the folder driver and exclude the rest
+drivers/
+!drivers/Makefile

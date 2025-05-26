@@ -10,11 +10,11 @@ LLVM_MC = llvm-mc
 LLVM_LD = clang
 
 # Target Architecture (adjust as needed)
-TARGET_ARCH_LLC = arm
-TARGET_ARCH_CC = arm-linux-gnueabihf
+#TARGET_ARCH_LLC = arm
+#TARGET_ARCH_CC = arm-linux-gnueabihf
 
-#TARGET_ARCH_LLC = x86-64
-#TARGET_ARCH_CC = x86_64-linux-gnu
+TARGET_ARCH_LLC = x86-64
+TARGET_ARCH_CC = x86_64-linux-gnu
 
 #TARGET_ARCH_LLC = aarch64
 #TARGET_ARCH_CC = aarch64-linux-gnu
@@ -169,6 +169,24 @@ all: $(TARGET1_OUT) $(TARGET2_OUT) $(TARGET3_OUT) $(TARGET4_OUT)
 	@echo "All targets built with LLVM workflow."
 	@mkdir -p ./build/bin/$(TARGET_ARCH_CC)
 	@mv ./build/*.out ./build/bin/$(TARGET_ARCH_CC)
+
+# Create a release
+release: all release_binaries
+
+release_binaries: 
+	@mkdir -p release/mixip-$(TARGET_ARCH_CC)
+	@cp $(BUILD_DIR)/bin/$(TARGET_ARCH_CC)/* release/mixip-$(TARGET_ARCH_CC)/.
+	@echo "Done creating a release for $(TARGET_ARCH_CC)..."
+	@echo "Zipping the release mixip-$(TARGET_ARCH_CC)..."
+	@cd release && zip -r mixip-$(TARGET_ARCH_CC).zip mixip-$(TARGET_ARCH_CC)
+
+release_dev_env:
+	@mkdir -p release/mixip-dev-env/include
+	@cp include/mixip.h release/mixip-dev-env/include/mixip.h
+	@cp drivers/Makefile release/mixip-dev-env/Makefile
+	@echo "Zipping the dev env release mixip-dev-env.zip..."
+	@cd release && zip -r mixip-dev-env.zip mixip-dev-env 
+
 
 # Clean rule to remove build artifacts
 clean:

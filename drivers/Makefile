@@ -2,7 +2,7 @@ CC = gcc
 
 CFLAGS = -std=gnu99 -I/usr/local/include/ -I../include
 CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude
-LD_FLAGS = -shared # -L/usr/local/lib/x86_64-linux-gnu/ 
+LD_FLAGS = -shared  -L./../include 
 LD_FLAGS += -lc -lpthread -lrt -lm -lserialposix -lxml2
 
 .PHONY: new compile clean
@@ -13,7 +13,8 @@ ifeq ($(name),)
 	@exit 1
 endif
 	@echo "Creating a new driver library $(name)..."
-	@mkdir -p ./$(name)
+	@mkdir -p ./src
+	@mkdir -p ./include
 	@echo   "#include <mixip.h>" \
 			"\n" \
 			"\nint dsetup( serial_manager_t * serial ){\n" \
@@ -30,7 +31,7 @@ endif
 			"\n}\n" \
 			"\nint dwrite( buffer_t * buf ){\n" \
 			" \n  return 0;" \
-			"\n}" > ./$(name)/$(name).c
+			"\n}" > ./src/run-$(name).c
 	
 clean:
 ifeq ($(name),)
@@ -38,22 +39,21 @@ ifeq ($(name),)
 	@exit 1
 endif
 	@echo "Removing the build directory from the $(name) library..."
-	@rm -rf ./$(name)/build
+	@rm -rf ./build
  
-
-$(name)/build:
+build:
 	@echo "Compiling driver: $(name)"
-	@mkdir -p $(name)/build
+	@mkdir -p build
 
-$(name)/build/%.o: $(name)/%.c | $(name)/build
+build/%.o: src/%.c | build
 	@echo "Compiling $< to object file $@"
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # $(patsubst PATTERN,REPLACEMENT,TEXT)
-$(name)/build/lib$(name).so: $(patsubst $(name)/%.c, $(name)/build/%.o, $(wildcard $(name)/*.c) )
+build/lib$(name).so: $(patsubst src/%.c, build/%.o, $(wildcard src/*.c) )
 	@echo "Building shared library: $@"
-	$(CC) $(LD_FLAGS) -o $@ $(patsubst $(name)/%.c, $(name)/build/%.o, $(wildcard $(name)/*.c) ) 
+	$(CC) $(LD_FLAGS) -o $@ $(patsubst src/%.c, build/%.o, $(wildcard src/*.c) ) 
 	@echo "Shared library created: $@"
 
-compile: $(name)/build/lib$(name).so
+compile: build/lib$(name).so
 	@echo "Done creating the shared library $<!"
