@@ -2,6 +2,7 @@ CC = clang
 
 CFLAGS = -std=gnu99 -I/usr/local/include/ -I../include
 CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude -fPIC
+CFLAGS += -D$(platform)
 LD_FLAGS = -shared
 LD_FLAGS += -lc -lpthread -lrt -lm -lserialposix -lxml2 -lgpiod
 
