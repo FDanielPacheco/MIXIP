@@ -391,7 +391,7 @@ main( int argc, char **argv ){
     }
   }
 
-  printf("[%d] Driver launched %s...\n", getpid( ), "driver");
+  printf("[%d] Driver launched %s...\n", getpid( ), arguments.driver);
   result = 0;
   for( ; ; ){
     // Driver development loop

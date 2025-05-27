@@ -1,9 +1,9 @@
-CC = gcc
+CC = clang
 
 CFLAGS = -std=gnu99 -I/usr/local/include/ -I../include
-CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude
-LD_FLAGS = -shared  -L./../include 
-LD_FLAGS += -lc -lpthread -lrt -lm -lserialposix -lxml2
+CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude -fPIC
+LD_FLAGS = -shared
+LD_FLAGS += -lc -lpthread -lrt -lm -lserialposix -lxml2 -lgpiod
 
 .PHONY: new compile clean
 
@@ -33,14 +33,6 @@ endif
 			" \n  return 0;" \
 			"\n}" > ./src/run-$(name).c
 	
-clean:
-ifeq ($(name),)
-	@echo "Error: Please specify a driver name using 'make clean name=your_driver_name'"
-	@exit 1
-endif
-	@echo "Removing the build directory from the $(name) library..."
-	@rm -rf ./build
- 
 build:
 	@echo "Compiling driver: $(name)"
 	@mkdir -p build
@@ -57,3 +49,7 @@ build/lib$(name).so: $(patsubst src/%.c, build/%.o, $(wildcard src/*.c) )
 
 compile: build/lib$(name).so
 	@echo "Done creating the shared library $<!"
+
+clean:
+	@echo "Removing the build directory from the library..."
+	@rm -rf ./build

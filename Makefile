@@ -10,11 +10,11 @@ LLVM_MC = llvm-mc
 LLVM_LD = clang
 
 # Target Architecture (adjust as needed)
-#TARGET_ARCH_LLC = arm
-#TARGET_ARCH_CC = arm-linux-gnueabihf
+TARGET_ARCH_LLC = arm
+TARGET_ARCH_CC = arm-linux-gnueabihf
 
-TARGET_ARCH_LLC = x86-64
-TARGET_ARCH_CC = x86_64-linux-gnu
+#TARGET_ARCH_LLC = x86-64
+#TARGET_ARCH_CC = x86_64-linux-gnu
 
 #TARGET_ARCH_LLC = aarch64
 #TARGET_ARCH_CC = aarch64-linux-gnu
