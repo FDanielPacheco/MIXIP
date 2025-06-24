@@ -18,7 +18,7 @@ endif
 	@mkdir -p ./include
 	@echo   "#include <mixip.h>" \
 			"\n" \
-			"\nint dsetup( serial_manager_t * serial ){\n" \
+			"\nint dsetup( serial_manager_t * serial, const char * name ){\n" \
 			" // Runs first and once...\n" \
 			" \n  return 0;" \
 			"\n}\n" \

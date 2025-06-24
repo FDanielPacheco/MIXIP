@@ -56,10 +56,10 @@ struct memshared{
 };
 
 struct driver{
-  int (* dsetup)( serial_manager_t * ); // int dsetup( serial_managet_t * serial );
-  int (* dloop)( flow_t * );            // int dloop( flow_t * flow );
-  int (* dread)( buffer_t * );          // int dread( buffer_t * buf );
-  int (* dwrite)( buffer_t * );         // int dwrite( buffer_t * buf );
+  int (* dsetup)( serial_manager_t *, const char * );    // int dsetup( serial_managet_t * serial, const char * name );
+  int (* dloop)( flow_t * );                             // int dloop( flow_t * flow );
+  int (* dread)( buffer_t * );                           // int dread( buffer_t * buf );
+  int (* dwrite)( buffer_t * );                          // int dwrite( buffer_t * buf );
 };
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
@@ -279,7 +279,7 @@ main( int argc, char **argv ){
   }
 
   // Perform the driver setup configuration, give the serial object 
-  if( -1 == driver.dsetup( serial ) ){                                          
+  if( -1 == driver.dsetup( serial, arguments.name ) ){                                          
     printf("[%d] Driver reported an error during setup, closing...\n", getpid( ) );
     serial_close( &serial->sr );
     cleanup( &tx, &rx, serial, flow, driverlib );
