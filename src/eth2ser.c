@@ -48,7 +48,7 @@
 
 #define SEGM_MSZ           256         // Maximum size of each serial port segment  
 #define NMAX_SEGME         256         // Maximum number of segments
-#define NMAX_FRAME         16          // Maximum number of frames
+#define NMAX_FRAME         256         // Maximum number of frames
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Data structures
@@ -57,6 +57,7 @@
 struct arguments{
   char * name;                         // Instance name
   char * interface;                    // Network interaface file descriptor
+  uint8_t size;                        // Ring buffer size
 };
   
 typedef struct{
@@ -96,9 +97,10 @@ const char  * argp_program_bug_address = "fabio.d.pacheco@inesctec.pt";
 static char   doc[ ]                   = "Ethernet to Serial, is a program that captures and encodes information from the network interface and sends to the serial port.";
 static char   args_doc[ ]              = "Instance-Name Network-Interface-FileDescriptor";
 
-static struct argp_option options[ ] = {
-  {"name",      'n', "<instance-name>" , 0, "The instance name"                           , 0 },
-  {"interface", 'i', "<interface>"     , 0, "A file descriptor for the network interface" , 0 },
+static struct argp_option options[ ] =  {
+  {"name",      'n', "<instance-name>"    , 0, "The instance name"                           , 0 },
+  {"interface", 'i', "<interface>"        , 0, "A file descriptor for the network interface" , 0 },
+  {"rbsize",    'r', "<ringbuffer_size>"  , 0, "Ring buffer size" , 0 },
   { 0 }
 };
   
@@ -120,6 +122,9 @@ parseArgs( int key, char * arg, struct argp_state * state ){
     case 'i':
       arguments->interface = arg;
       break;
+
+    case 'r':
+      arguments->size = (uint8_t) atoi( arg );
 
     case ARGP_KEY_ARG:
       // Index of each extra argument not specified by an option key
@@ -175,11 +180,11 @@ cleanup( buffer_t * buf, mem_queue_t * queue ){
 
 int
 main( int argc, char **argv ){
-  struct arguments arguments = { .name = "", .interface = "" };
+  struct arguments arguments = { .name = "", .interface = "", .size = 0 };
   argp_parse( &argp, argc, argv, 0, 0, &arguments );
 
   // Check the parameters
-  if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) ){
+  if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) || !arguments.size ){
     errno = EINVAL;
     perror("missing arguments");
     return EXIT_FAILURE;
@@ -219,7 +224,7 @@ main( int argc, char **argv ){
   // Create the multiprocess
   pid_t proc = fork( );
   if( !proc ){
-    printf("[%d] Capture from NIC process...\n", getpid( ) );
+    printf("[%d] Capture from NIC process with a %d ring buffer ...\n", getpid( ), arguments.size );
     
     const uint8_t limiter = 0x00;
     const uint8_t segment_size = 32;
@@ -289,12 +294,12 @@ main( int argc, char **argv ){
               }              
             }
             if( i == ser_nsegm ){
-              if( NMAX_FRAME <= queue->head + 1 )
+              if( arguments.size <= queue->head + 1 )
                 queue->head = 0;
               else
                 queue->head ++;
 
-              if( NMAX_FRAME >= queue->nframes + 1 )
+              if( arguments.size >= queue->nframes + 1 )
                 queue->nframes ++;
               
               fflush( stdout );
@@ -312,7 +317,7 @@ main( int argc, char **argv ){
 
   }
 
-  printf("[%d] Write to serial port process...\n", getpid( ) );
+  printf("[%d] Write to serial port process ...\n", getpid( ) );
 
   const uint32_t pollrate = 10e3;
   uint8_t nframes = 0;
@@ -323,9 +328,9 @@ main( int argc, char **argv ){
       sem_wait( &queue->sem );  
       
       if( 0 < queue->nframes ){
-        nframes = ( queue->head - queue->tail + NMAX_FRAME ) % NMAX_FRAME ;
+        nframes = ( queue->head - queue->tail + arguments.size ) % arguments.size ;
         if( !nframes )
-          nframes = NMAX_FRAME;
+          nframes = arguments.size;
         
         sem_post( &queue->sem );
         break;
@@ -343,7 +348,7 @@ main( int argc, char **argv ){
       if( 0 < queue->nframes )
         queue->nframes --;
       
-      if( NMAX_FRAME <= queue->tail + 1 )
+      if( arguments.size <= queue->tail + 1 )
         queue->tail = 0;
       else 
         queue->tail ++;        

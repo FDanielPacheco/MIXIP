@@ -63,11 +63,17 @@ struct interface{
   char tx[NAME_MAX];
 };
 
+struct ring_buffer{
+  uint8_t nframes;
+  uint8_t nsegments;
+};
+
 typedef struct{
-  struct interface nic;
-  int              nicopt;             // 0 -> default, 1 -> tx rx 
-  struct device    dev;
-  int              devopt;             // 0 -> default, 1 -> tx rx
+  struct interface    nic;
+  int                 nicopt;             // 0 -> default, 1 -> tx rx 
+  struct device       dev;
+  int                 devopt;             // 0 -> default, 1 -> tx rx
+  struct ring_buffer  ring;
 } cfgxml_t;
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
@@ -280,6 +286,7 @@ get_xml_data( const char *filename, cfgxml_t * data ){
     xmlNode * tx_node = NULL;
     xmlNode * rx_node = NULL;
     xmlNode * def_node = NULL;
+    xmlNode * ring_node = NULL;
 
     if( network_node ){
       for( xmlNode * current_node = network_node->children ; current_node != NULL ; current_node = current_node->next ){
@@ -290,9 +297,30 @@ get_xml_data( const char *filename, cfgxml_t * data ){
             tx_node = current_node;
           if( !strcmp( (char *)current_node->name, "rx" ) )              
             rx_node = current_node;
+          if( !strcmp( (char *)current_node->name, "ring" ) )              
+            ring_node = current_node;
         }
       }
       
+      if( ring_node ){
+        xmlNode * nframes_node = NULL;
+
+        for( xmlNode * current_node = ring_node->children ; current_node != NULL ; current_node = current_node->next ){
+          if( XML_ELEMENT_NODE == current_node->type ){
+            if( !strcmp( (char *)current_node->name, "nframes" ) )
+              nframes_node = current_node;
+          }
+        }
+
+        if( nframes_node )
+          data->ring.nframes = (uint8_t) atoi( (const char *) xmlNodeGetContent( nframes_node ) );
+        else
+          data->ring.nframes = 16;
+      }
+      else{
+        data->ring.nframes = 16;
+      }
+
       if( def_node ){
         xmlNode * name_node = NULL;
 
@@ -527,7 +555,7 @@ main( int argc, char **argv ){
   }
   char snic1 [ 16 ];
   snprintf( snic1, sizeof(snic1), "%d", nic1 );
-  printf("Opening eth2ser: ./%s %s %s %s %s\n", path_eth2ser, "-i", snic1, "-n", name1 );
+  printf("Opening eth2ser: ./%s %s %s %s %s %s %hhd\n", path_eth2ser, "-i", snic1, "-n", name1, "-r", cfg.ring.nframes );
 
   opened_proc[ n_proc ] = fork( );
   if( !opened_proc[ n_proc ] ){
@@ -537,6 +565,8 @@ main( int argc, char **argv ){
                      snic1,
                      "-n",
                      name1,
+                     "-r",
+                     cfg.ring.nframes,
                      (char *)NULL
     )){
       printf("[%d] ", getpid( ));

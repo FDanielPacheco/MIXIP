@@ -12,6 +12,9 @@
     </rx>
   </serial>
   <network>
+    <ring>
+      <nframes>16</nframes>
+    </ring>
     <default>
       <name>eth0</name>
     </default>
