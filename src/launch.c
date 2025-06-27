@@ -555,7 +555,9 @@ main( int argc, char **argv ){
   }
   char snic1 [ 16 ];
   snprintf( snic1, sizeof(snic1), "%d", nic1 );
-  printf("Opening eth2ser: ./%s %s %s %s %s %s %hhd\n", path_eth2ser, "-i", snic1, "-n", name1, "-r", cfg.ring.nframes );
+  char nframes[ 16 ];
+  snprintf( nframes, sizeof(nframes), "%d", cfg.ring.nframes );
+  printf("Opening eth2ser: ./%s %s %s %s %s %s %s\n", path_eth2ser, "-i", snic1, "-n", name1, "-r", nframes );
 
   opened_proc[ n_proc ] = fork( );
   if( !opened_proc[ n_proc ] ){
@@ -566,7 +568,7 @@ main( int argc, char **argv ){
                      "-n",
                      name1,
                      "-r",
-                     cfg.ring.nframes,
+                     nframes,
                      (char *)NULL
     )){
       printf("[%d] ", getpid( ));
