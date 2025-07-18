@@ -169,12 +169,12 @@ check_mixip_pattern( const char * str ){
     return -1;
   }
 
-  char * tx = strstr( tx, "tx" );
-  char * rx = strstr( rx, "rx" );
+  char * tx = strstr( str, "tx" );
+  char * rx = strstr( str, "rx" );
 
   if( !tx && !rx ){
     // How can the program arrive at this point without adding the driver role, return error
-    printf("Neither tx or rx was found on the string...\n");
+    printf("Neither tx or rx was found on the string (%s)...\n", str);
     errno = EINVAL;
     return -1;
   }
