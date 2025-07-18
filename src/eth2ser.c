@@ -199,7 +199,7 @@ main( int argc, char **argv ){
   // Open the shared memory for the driver to update the serial link segment size and other parameters
   snprintf( path, sizeof(path), "/%s_tx_param", arguments.name );
   printf("[%d] Translator sharing the objects in /dev/shm%s ...\n", getpid( ), path );
-  translator_parameters_t * param = shm_open2( path, sizeof(translator_parameters_t), O_RDWR, 0666 );
+  translator_parameters_t * param = shm_open2( path, sizeof(translator_parameters_t), O_CREAT | O_RDWR, 0666 );
   if( !param ){
     perror("shm_open2 (param)");
     return EXIT_FAILURE;
