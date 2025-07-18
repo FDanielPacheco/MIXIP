@@ -77,7 +77,7 @@ mixip_translator_connect( const char * driver_name, translator_parameters_t * pa
   }
   
   char path[ NAME_MAX ];
-  snprintf( path, NAME_MAX, "%s_tx_param", driver_name );
+  snprintf( path, NAME_MAX, "/%s_tx_param", driver_name );
   param = (translator_parameters_t *) shm_open2( path, sizeof(buffer_t), O_RDWR, 0 );
   if( !param )
     return -1;
