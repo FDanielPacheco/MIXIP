@@ -130,6 +130,7 @@ int8_t mixip_continue( flow_t * flow );
  * @brief Change the size of the serial link segment from the MIXIP-Translator.
  *  
  * @param[in] size The size between 5 to 255. Note that the overhead is equal to 4 bytes, so if size is 5 the payload will be equal to 1.
+ * @param[out] param The translator parameters object.
  * 
  * @return Upon success, the serial link segment will be updated. \n
  *         Otherwise, -1 is returned and `errno` is set to indicate the error.
@@ -143,6 +144,7 @@ int8_t mixip_translator_serial_link_segment_size(  const uint8_t size, translato
  * @brief Change the size of the packet-roiented ring buffer from the MIXIP-Translator. 
  *  
  * @param[in] size The size between 1 to 255.
+ * @param[out] param The translator parameters object.
  * 
  * @return Upon success, the ring buffer will be updated. \n
  *         Otherwise, -1 is returned and `errno` is set to indicate the error.
@@ -154,6 +156,8 @@ int8_t mixip_translator_ring_buffer_size( const uint8_t size, translator_paramet
 
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
  * @brief Activate the MIXIP-Translator. 
+ P
+ * @param[out] param The translator parameters object.
  * 
  * @return Upon success, the MIXIP-Translator will be activated \n
  *         Otherwise, -1 is returned and `errno` is set to indicate the error.
@@ -165,7 +169,11 @@ int8_t mixip_translator_activate( translator_parameters_t * param );
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
  * @brief Connect to the MIXIP-Translator. 
  * 
- * @return Upon success, the MIXIP-Translator will connect. \n
+ * @param[in] driver_name The name of the driver.
+ * @param[out] param The translator parameters object.
+ * 
+ * @return If the driver is a transmitter or default, upon success, it will return 0 and it will be connected to the translator. \n
+ *         If the driver is a receiver, it will return 1 and will not connect itself to the translator. \n
  *         Otherwise, -1 is returned and `errno` is set to indicate the error.
  * 
  *  - `EINVAL`: Invalid argument
