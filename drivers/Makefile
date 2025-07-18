@@ -1,9 +1,20 @@
-CC = clang
+# Version
+MAJOR = 2
+MINOR = 0
+RELEASE = 0
 
-CFLAGS = -std=gnu99 -I/usr/local/include/ -I../include
+# Path to LLVM
+LLVM_BIN_PATH := $(HOME)/Applications/LLVM/llvm-project/build/bin/
+PATH := $(LLVM_BIN_PATH):$(PATH)
+
+CC = clang
+CFLAGS = -std=gnu99 -I/usr/local/include/ -I/usr/include/libxml2
 CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude -fPIC
 LD_FLAGS = -shared
 LD_FLAGS += -lc -lpthread -lrt -lm -lserialposix -lxml2 -lgpiod -lmixip
+
+# Documentation
+DOCS_DIR = docs
 
 .PHONY: new compile clean
 
@@ -53,6 +64,12 @@ build/lib$(name).so: $(patsubst src/%.c, build/%.o, $(wildcard src/*.c) )
 
 compile: build/lib$(name).so
 	@echo "Done creating the shared library $<!"
+
+documentation:
+	@echo "Generating documentation..."
+	@cd docs && doxygen Doxyfile "PREDEFINED=PROJECT_VERSION=$(MAJOR).$(MINOR).$(RELEASE)"
+	@cd ..
+	@echo "Documentation generated in $(DOC_DIR)"
 
 clean:
 	@echo "Removing the build directory from the library..."
