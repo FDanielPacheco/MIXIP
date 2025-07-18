@@ -71,6 +71,7 @@ OPT_FLAGS = -O2
 ASM_FLAGS =
 LD_FLAGS = -no-pie # -L/usr/local/lib/$(TARGET_ARCH_CC)/
 LD_LIB += -lc -lpthread -lrt -lm -lserialposix -lxml2
+LLC_FLAGS =
 
 # Source and build directories
 SRC_DIR = src
@@ -117,6 +118,14 @@ TARGET4_S = $(ASM_DIR)/$(TARGET4_NAME).s
 TARGET4_OBJ = $(BUILD_DIR)/$(TARGET4_NAME).o $(COMMON_LIBS_O)
 TARGET4_OUT = $(BUILD_DIR)/$(TARGET4_NAME).out
 
+# --- Target 5: MIXIP dynamical library ---
+TARGET5_NAME = mixip
+TARGET5_SRC = $(SRC_DIR)/$(TARGET5_NAME).c
+TARGET5_LL = $(LLVM_IR_DIR)/$(TARGET5_NAME).ll
+TARGET5_S = $(ASM_DIR)/$(TARGET5_NAME).s
+TARGET5_OBJ = $(BUILD_DIR)/$(TARGET5_NAME).o $(COMMON_LIBS_O)
+TARGET5_SO = $(BUILD_DIR)/$(TARGET5_NAME).so
+
 # --- Build Rules ---
 # Create build directories
 $(BUILD_DIR) $(LLVM_IR_DIR) $(ASM_DIR):
@@ -136,7 +145,7 @@ $(LLVM_IR_DIR)/%.opt.ll: $(LLVM_IR_DIR)/%.ll
 # Compile LLVM IR (.ll) to Assembly (.s)
 $(ASM_DIR)/%.s: $(LLVM_IR_DIR)/%.ll | $(ASM_DIR)
 	@echo "Compiling LLVM IR $< to Assembly $@"
-	$(LLC) -march=$(TARGET_ARCH_LLC) $< -o $@
+	$(LLC) -march=$(TARGET_ARCH_LLC) $(LLC_FLAGS) $< -o $@
 
 # Assemble Assembly (.s) to Object (.o)
 $(BUILD_DIR)/%.o: $(ASM_DIR)/%.s | $(BUILD_DIR)
@@ -164,14 +173,29 @@ $(TARGET4_OUT): $(TARGET4_OBJ)
 	$(LLVM_LD) --target=$(TARGET_ARCH_CC) $(LD_FLAGS) $(TARGET4_OBJ) $(LD_LIB) -o $@
 	@echo "Built executable: $@"
 
-# Default target to build all executables
-all: $(TARGET1_OUT) $(TARGET2_OUT) $(TARGET3_OUT) $(TARGET4_OUT)
+$(TARGET5_SO): $(TARGET5_OBJ)
+	@echo "Linking $(TARGET5_NAME)..."
+	$(LLVM_LD) --target=$(TARGET_ARCH_CC) -shared $(TARGET5_OBJ) $(LD_LIB) -o $@
+	@echo "Built dynamic library: $@"
+
+
+all:
+	$(MAKE) build_bin
+	@rm ./build/*.o
+	$(MAKE) CFLAGS+='$(CFLAGS) -fPIC' LLC_FLAGS='-relocation-model=pic' build_lib
+
+build_bin: $(TARGET1_OUT) $(TARGET2_OUT) $(TARGET3_OUT) $(TARGET4_OUT)
 	@echo "All targets built with LLVM workflow."
 	@mkdir -p ./build/bin/$(TARGET_ARCH_CC)
 	@mv ./build/*.out ./build/bin/$(TARGET_ARCH_CC)
 
+build_lib: $(TARGET5_SO)
+	@echo "All targets built with LLVM workflow."
+	@mkdir -p ./build/lib/$(TARGET_ARCH_CC)
+	@mv ./build/*.so ./build/lib/$(TARGET_ARCH_CC)
+
 # Create a release
-release: all release_binaries
+release: all release_binaries release_dev_env
 
 release_binaries: 
 	@mkdir -p release/mixip-$(TARGET_ARCH_CC)
@@ -181,11 +205,12 @@ release_binaries:
 	@cd release && zip -r mixip-$(TARGET_ARCH_CC).zip mixip-$(TARGET_ARCH_CC)
 
 release_dev_env:
-	@mkdir -p release/mixip-dev-env/include
-	@cp include/mixip.h release/mixip-dev-env/include/mixip.h
-	@cp drivers/Makefile release/mixip-dev-env/Makefile
-	@echo "Zipping the dev env release mixip-dev-env.zip..."
-	@cd release && zip -r mixip-dev-env.zip mixip-dev-env 
+	@mkdir -p release/mixip-dev-env-$(TARGET_ARCH_CC)/include
+	@cp include/mixip.h release/mixip-dev-env-$(TARGET_ARCH_CC)/include/mixip.h
+	@cp drivers/Makefile release/mixip-dev-env-$(TARGET_ARCH_CC)/Makefile
+	@cp build/lib/$(TARGET_ARCH_CC)/mixip.so release/mixip-dev-env-$(TARGET_ARCH_CC)/include/mixip.so
+	@echo "Zipping the dev env release mixip-dev-env-$(TARGET_ARCH_CC).zip..."
+	@cd release && zip -r mixip-dev-env-$(TARGET_ARCH_CC).zip mixip-dev-env-$(TARGET_ARCH_CC) 
 
 
 # Clean rule to remove build artifacts
