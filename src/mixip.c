@@ -86,8 +86,8 @@ mixip_continue( flow_t * flow ){
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t 
-mixip_translator_connect( const char * driver_name, translator_parameters_t * param ){
-  if( !driver_name ){
+mixip_translator_connect( const char * driver_name, translator_parameters_t ** param ){
+  if( !driver_name || !param ){
     errno = EINVAL;
     return -1;
   }
@@ -107,8 +107,8 @@ mixip_translator_connect( const char * driver_name, translator_parameters_t * pa
 
   char path[ NAME_MAX ];
   snprintf( path, NAME_MAX, "/%s_tx_param", driver_name );
-  param = (translator_parameters_t *) shm_open2( path, sizeof(buffer_t), O_RDWR, 0 );
-  if( !param ){
+  *param = (translator_parameters_t *) shm_open2( path, sizeof(buffer_t), O_RDWR, 0 );
+  if( !(*param) ){
     perror("shm_open2");
     return -1;      
   }
@@ -118,7 +118,7 @@ mixip_translator_connect( const char * driver_name, translator_parameters_t * pa
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 int8_t
-mixip_translator_ring_buffer_size( const uint8_t size, translator_parameters_t * param  ){
+mixip_translator_ring_buffer_size( const uint8_t size, translator_parameters_t * param ){
   if( !param ){
     errno = EINVAL;
     return -1;
