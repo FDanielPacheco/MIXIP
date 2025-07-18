@@ -77,7 +77,7 @@ void * load_driver( const char * path, struct driver * dev );
  * Global variables
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
-const char  * argp_program_version     = "serial broker 1.0";
+const char  * argp_program_version     = "controller 1.0";
 const char  * argp_program_bug_address = "fabio.d.pacheco@inesctec.pt";
 static char   doc[ ]                   = "Serial port broker specified by argument.";
 static char   args_doc[ ]              = "Instance-Name Serial-Port";
@@ -270,7 +270,7 @@ main( int argc, char **argv ){
   const uint16_t pollrate_ms = 10;
   int8_t result;
   
-  printf("[%d] Serial broker connected at %s sharing the objects in /dev/shm%s and /dev/shm%s ...\n", getpid( ), arguments.serial, tx.path, rx.path );
+  printf("[%d] Controller connected at %s sharing the objects in /dev/shm%s and /dev/shm%s ...\n", getpid( ), arguments.serial, tx.path, rx.path );
 
   // Load the driver
   struct driver driver;
@@ -281,7 +281,10 @@ main( int argc, char **argv ){
     return EXIT_FAILURE;
   }
 
-  // Perform the driver setup configuration, give the serial object 
+  // Wait for some time until the Translator has started
+  sleep( 1 );
+
+  // Perform the driver setup configuration, give the serial object   
   if( -1 == driver.dsetup( serial, arguments.name ) ){                                          
     printf("[%d] Driver reported an error during setup, closing...\n", getpid( ) );
     serial_close( &serial->sr );
@@ -380,7 +383,7 @@ main( int argc, char **argv ){
       }
         
       if( signal_flag ){
-        printf("[%d] Serial broker interrupted with signal...\n", getpid( ) );
+        printf("[%d] Controller interrupted with signal...\n", getpid( ) );
 
         if( -1 == driver.dexit( ) )                                         
           printf("[%d] Driver reported an error during exit, closing...\n", getpid( ) );
@@ -408,7 +411,7 @@ main( int argc, char **argv ){
     }
 
     if( signal_flag ){
-      printf("[%d] Serial broker driver loop interrupted with signal...\n", getpid( ) );
+      printf("[%d] Controller driver loop interrupted with signal...\n", getpid( ) );
       result = 1;
     }  
 
