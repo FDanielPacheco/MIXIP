@@ -57,7 +57,6 @@
 struct arguments{
   char * name;                         // Instance name
   char * interface;                    // Network interaface file descriptor
-  uint8_t size;                        // Ring buffer size
 };
   
 typedef struct{
@@ -100,7 +99,6 @@ static char   args_doc[ ]              = "Instance-Name Network-Interface-FileDe
 static struct argp_option options[ ] =  {
   {"name",      'n', "<instance-name>"    , 0, "The instance name"                           , 0 },
   {"interface", 'i', "<interface>"        , 0, "A file descriptor for the network interface" , 0 },
-  {"rbsize",    'r', "<ringbuffer_size>"  , 0, "Ring buffer size" , 0 },
   { 0 }
 };
   
@@ -122,9 +120,6 @@ parseArgs( int key, char * arg, struct argp_state * state ){
     case 'i':
       arguments->interface = arg;
       break;
-
-    case 'r':
-      arguments->size = (uint8_t) atoi( arg );
 
     case ARGP_KEY_ARG:
       // Index of each extra argument not specified by an option key
@@ -180,11 +175,11 @@ cleanup( buffer_t * buf, mem_queue_t * queue ){
 
 int
 main( int argc, char **argv ){
-  struct arguments arguments = { .name = "", .interface = "", .size = 0 };
+  struct arguments arguments = { .name = "", .interface = "" };
   argp_parse( &argp, argc, argv, 0, 0, &arguments );
 
   // Check the parameters
-  if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) || !arguments.size ){
+  if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) ){
     errno = EINVAL;
     perror("missing arguments");
     return EXIT_FAILURE;
@@ -193,13 +188,22 @@ main( int argc, char **argv ){
   // Shared memory definitions
   char path[ 128 ];
   snprintf( path, sizeof(path), "/%s_tx", arguments.name );
-  //                                                          __ Inherit the creator permissions
-  //                                                         /
+  //                                                               __ Inherit the creator permissions
+  //                                                              /
   buffer_t * serial = shm_open2( path, sizeof(buffer_t), O_RDWR, 0 );
   if( !serial ){
-    perror("shm_open2");
+    perror("shm_open2 (serial)");
     return EXIT_FAILURE;
   }
+  
+  // Open the shared memory for the driver to update the serial link segment size and other parameters
+  snprintf( path, sizeof(path), "/%s_tx_param", arguments.name );
+  translator_parameters_t * param = shm_open2( path, sizeof(translator_parameters_t), O_RDWR, 0666 );
+  if( !param ){
+    perror("shm_open2 (param)");
+    return EXIT_FAILURE;
+  }
+  param->boot = 0;
   
   // Connect to the interface
   int nic = atoi( arguments.interface );
@@ -217,24 +221,26 @@ main( int argc, char **argv ){
     return EXIT_FAILURE;
   }
   memset( queue, 0, sizeof( mem_queue_t ) );
-  sem_init( &queue->sem, 1, 1 );
+  sem_init( &queue->sem, MAP_SHARED, 1 );
   
+  const long activation_poll_delay = 2;
+  while( !param->boot ){
+    sleep( activation_poll_delay );
+    printf("[%d] Waiting for eth2ser (%s) activation ...\n", getpid( ), path );
+  }
+
   int8_t result;
 
   // Create the multiprocess
   pid_t proc = fork( );
-  if( !proc ){
-    printf("[%d] Capture from NIC process with a %d ring buffer ...\n", getpid( ), arguments.size );
-    
+  if( !proc ){    
     const uint8_t limiter = 0x00;
-    const uint8_t segment_size = 32;
-    const uint8_t payload_sz = segment_size - 1 - 1 - 1 - 1;
-    //                            SOF Limiter_/  /    \   \_ EOF Limiter
-    //                                 Window  _/      \_ COBS overhead
     buffer_t frame;
     
     for( ; ; ){
       for( ; ; ){
+        printf("[%d] Capture from NIC process with a %d ring buffer and compact to %d bytes segments ...\n", getpid( ), param->size_rb, param->size_sls );
+
         frame.len = (size_t) read( nic, frame.data, sizeof(frame.data) ); 
         if( 0 < frame.len ){
           if( 1 > ( result = et_encode( &frame ) ) ){
@@ -247,8 +253,13 @@ main( int argc, char **argv ){
             break;   
           }
           
-          frame.data[ 0 ] = limiter;
+          uint8_t ring_buffer_size = param->size_rb;
+          uint8_t segment_size = param->size_sls;
+          uint8_t payload_sz = segment_size - 1 - 1 - 1 - 1;
+          //                      SOF Limiter_/  /    \   \_ EOF Limiter
+          //                           Window  _/      \_ COBS overhead
 
+          frame.data[ 0 ] = limiter;
           int ser_nsegm = (int) ceil( (float) frame.len / (float) payload_sz );
           if( 0 < ser_nsegm ){
             sem_wait( &queue->sem );  
@@ -294,12 +305,12 @@ main( int argc, char **argv ){
               }              
             }
             if( i == ser_nsegm ){
-              if( arguments.size <= queue->head + 1 )
+              if( ring_buffer_size <= queue->head + 1 )
                 queue->head = 0;
               else
                 queue->head ++;
 
-              if( arguments.size >= queue->nframes + 1 )
+              if( ring_buffer_size >= queue->nframes + 1 )
                 queue->nframes ++;
               
               fflush( stdout );
@@ -324,13 +335,14 @@ main( int argc, char **argv ){
 
   for( ; ; ){
     nframes = 0;
+    uint8_t ring_buffer_size = param->size_rb;
     for( ; ; ){
       sem_wait( &queue->sem );  
       
       if( 0 < queue->nframes ){
-        nframes = ( queue->head - queue->tail + arguments.size ) % arguments.size ;
+        nframes = ( queue->head - queue->tail + ring_buffer_size ) % ring_buffer_size ;
         if( !nframes )
-          nframes = arguments.size;
+          nframes = ring_buffer_size;
         
         sem_post( &queue->sem );
         break;
@@ -348,7 +360,7 @@ main( int argc, char **argv ){
       if( 0 < queue->nframes )
         queue->nframes --;
       
-      if( arguments.size <= queue->tail + 1 )
+      if( ring_buffer_size <= queue->tail + 1 )
         queue->tail = 0;
       else 
         queue->tail ++;        

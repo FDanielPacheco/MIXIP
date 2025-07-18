@@ -3,9 +3,9 @@
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
 /**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************//**
- * @file      tstdriver.c
+ * @file      controller.c
  * 
- * @version   1.0
+ * @version   2.0
  *
  * @date      02-05-2025
  *
@@ -60,6 +60,7 @@ struct driver{
   int (* dloop)( flow_t * );                             // int dloop( flow_t * flow );
   int (* dread)( buffer_t * );                           // int dread( buffer_t * buf );
   int (* dwrite)( buffer_t * );                          // int dwrite( buffer_t * buf );
+  int (* dexit)( void );                                 // int dexit( void );
 };
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
@@ -164,11 +165,13 @@ load_driver( const char * path, struct driver * dev ){
   // Clear any existing error
   dlerror( );
 
-  char * func[ ] = { "dsetup", "dloop", "dread", "dwrite" };
+  char * func[ ] = { "dsetup", "dloop", "dread", "dwrite", "dexit" };
   void (** devs[ ])( void ) = { ( void (**)(void) ) &dev->dsetup,
                                 ( void (**)(void) ) &dev->dloop,
                                 ( void (**)(void) ) &dev->dread,
-                                ( void (**)(void) ) &dev->dwrite };
+                                ( void (**)(void) ) &dev->dwrite,
+                                ( void (**)(void) ) &dev->dexit 
+                              };
 
   for( int i = 0 ; i < 4 ; ++i ){
     // According to the ISO C standard, POSIX.1-2008
@@ -220,8 +223,8 @@ main( int argc, char **argv ){
     shm_unlink( tx.path );
     return EXIT_FAILURE;
   }
-  sem_init( &tx.buf->empty, 1, 0 );
-  sem_init( &tx.buf->available, 1, 0 );
+  sem_init( &tx.buf->empty, MAP_SHARED, 0 );
+  sem_init( &tx.buf->available, MAP_SHARED, 0 );
 
   struct memshared rx;
   snprintf( rx.path, sizeof(rx.path), "/%s_rx", arguments.name );  
@@ -232,8 +235,8 @@ main( int argc, char **argv ){
     shm_unlink( rx.path );
     return EXIT_FAILURE;
   }
-  sem_init( &rx.buf->empty, 1, 0 );
-  sem_init( &rx.buf->available, 1, 0 );
+  sem_init( &rx.buf->empty, MAP_SHARED, 0 );
+  sem_init( &rx.buf->available, MAP_SHARED, 0 );
 
   // Capability for the driver 
   flow_t * flow = (flow_t * ) mmap( NULL, sizeof( flow_t ), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0 );
@@ -243,10 +246,10 @@ main( int argc, char **argv ){
     return EXIT_FAILURE;
   }
   flow->network = 0;
-  sem_init( &flow->rx_done, 1, 0 );
-  sem_init( &flow->rx_wait, 1, 0 );
-  sem_init( &flow->tx_done, 1, 0 );
-  sem_init( &flow->tx_wait, 1, 0 );
+  sem_init( &flow->rx_done, MAP_SHARED, 0 );
+  sem_init( &flow->rx_wait, MAP_SHARED, 0 );
+  sem_init( &flow->tx_done, MAP_SHARED, 0 );
+  sem_init( &flow->tx_wait, MAP_SHARED, 0 );
 
   // Configure the serial port
   serial_manager_t * serial = (serial_manager_t *) mmap( NULL, 
@@ -378,6 +381,10 @@ main( int argc, char **argv ){
         
       if( signal_flag ){
         printf("[%d] Serial broker interrupted with signal...\n", getpid( ) );
+
+        if( -1 == driver.dexit( ) )                                         
+          printf("[%d] Driver reported an error during exit, closing...\n", getpid( ) );
+
         serial_close( &serial->sr );
         cleanup( &tx, &rx, serial, flow, driverlib );
   

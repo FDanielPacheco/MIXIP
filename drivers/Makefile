@@ -32,7 +32,10 @@ endif
 			"\n}\n" \
 			"\nint dwrite( buffer_t * buf ){\n" \
 			" \n  return 0;" \
-			"\n}" > ./src/run-$(name).c
+			"\n}\n" \ 
+			"\nint dexit( void ){\n" \
+			" \n  return 0;" \
+			"\n}"> ./src/run-$(name).c
 	
 build:
 	@echo "Compiling driver: $(name)"

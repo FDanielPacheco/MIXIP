@@ -286,7 +286,6 @@ get_xml_data( const char *filename, cfgxml_t * data ){
     xmlNode * tx_node = NULL;
     xmlNode * rx_node = NULL;
     xmlNode * def_node = NULL;
-    xmlNode * ring_node = NULL;
 
     if( network_node ){
       for( xmlNode * current_node = network_node->children ; current_node != NULL ; current_node = current_node->next ){
@@ -297,30 +296,9 @@ get_xml_data( const char *filename, cfgxml_t * data ){
             tx_node = current_node;
           if( !strcmp( (char *)current_node->name, "rx" ) )              
             rx_node = current_node;
-          if( !strcmp( (char *)current_node->name, "ring" ) )              
-            ring_node = current_node;
         }
       }
       
-      if( ring_node ){
-        xmlNode * nframes_node = NULL;
-
-        for( xmlNode * current_node = ring_node->children ; current_node != NULL ; current_node = current_node->next ){
-          if( XML_ELEMENT_NODE == current_node->type ){
-            if( !strcmp( (char *)current_node->name, "nframes" ) )
-              nframes_node = current_node;
-          }
-        }
-
-        if( nframes_node )
-          data->ring.nframes = (uint8_t) atoi( (const char *) xmlNodeGetContent( nframes_node ) );
-        else
-          data->ring.nframes = 16;
-      }
-      else{
-        data->ring.nframes = 16;
-      }
-
       if( def_node ){
         xmlNode * name_node = NULL;
 
@@ -428,16 +406,16 @@ main( int argc, char **argv ){
   pid_t opened_proc[ 4 ];
   int status, n_proc = 0;
 
-  const char path_serbroker[ ] = "serbroker.out";
+  const char path_controller[ ] = "controller.out";
   if( cfg.devopt ){
     printf("Have to initialize two serial interface instances ...\n");
     printf("tx(%s): %s, rx(%s): %s ...\n", cfg.dev.tx.name, cfg.dev.tx.path, cfg.dev.rx.name, cfg.dev.rx.path );
 
-    printf("Opening serbroker: ./%s %s %s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name, "-d", cfg.dev.tx.driver );
+    printf("Opening controller: ./%s %s %s %s %s %s %s\n", path_controller, "-s", cfg.dev.tx.path, "-n", cfg.dev.tx.name, "-d", cfg.dev.tx.driver );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_serbroker,
-                       path_serbroker,
+      if( -1 == execl( path_controller,
+                       path_controller,
                        "-s",
                        cfg.dev.tx.path,
                        "-n",
@@ -454,11 +432,11 @@ main( int argc, char **argv ){
     }
     n_proc ++;
 
-    printf("Opening serbroker: ./%s %s %s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name, "-d", cfg.dev.rx.driver );
+    printf("Opening controller: ./%s %s %s %s %s %s %s\n", path_controller, "-s", cfg.dev.rx.path, "-n", cfg.dev.rx.name, "-d", cfg.dev.rx.driver );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_serbroker,
-                       path_serbroker,
+      if( -1 == execl( path_controller,
+                       path_controller,
                        "-s",
                        cfg.dev.rx.path,
                        "-n",
@@ -478,11 +456,11 @@ main( int argc, char **argv ){
   else{
     printf("Have to initialize one serial interface instances ...\n");
     printf("default(%s): %s ...\n", cfg.dev.def.name, cfg.dev.def.path );
-    printf("Opening serbroker: ./%s %s %s %s %s %s %s\n", path_serbroker, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name, "-d", cfg.dev.def.driver );
+    printf("Opening controller: ./%s %s %s %s %s %s %s\n", path_controller, "-s", cfg.dev.def.path, "-n", cfg.dev.def.name, "-d", cfg.dev.def.driver );
     opened_proc[ n_proc ] = fork( );
     if( !opened_proc[ n_proc ] ){
-      if( -1 == execl( path_serbroker, 
-                       path_serbroker,
+      if( -1 == execl( path_controller, 
+                       path_controller,
                        "-s",
                        cfg.dev.def.path,
                        "-n",
@@ -555,9 +533,7 @@ main( int argc, char **argv ){
   }
   char snic1 [ 16 ];
   snprintf( snic1, sizeof(snic1), "%d", nic1 );
-  char nframes[ 16 ];
-  snprintf( nframes, sizeof(nframes), "%d", cfg.ring.nframes );
-  printf("Opening eth2ser: ./%s %s %s %s %s %s %s\n", path_eth2ser, "-i", snic1, "-n", name1, "-r", nframes );
+  printf("Opening eth2ser: ./%s %s %s %s %s\n", path_eth2ser, "-i", snic1, "-n", name1 );
 
   opened_proc[ n_proc ] = fork( );
   if( !opened_proc[ n_proc ] ){
@@ -567,8 +543,6 @@ main( int argc, char **argv ){
                      snic1,
                      "-n",
                      name1,
-                     "-r",
-                     nframes,
                      (char *)NULL
     )){
       printf("[%d] ", getpid( ));
