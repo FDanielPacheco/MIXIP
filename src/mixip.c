@@ -142,7 +142,7 @@ mixip_translator_serial_link_segment_size( const uint8_t size, translator_parame
 
   //   __ 3 bytes for the COBS encode and 1 byte for the extra overhead byte, 
   //  /   if the user were to select less or equal to 4 bytes of serial link segment, payload would never be sent
-  if( 4 < size ){
+  if( 4 >= size ){
     errno = ENOTSUP;
     return -1;
   }
