@@ -93,7 +93,7 @@ mixip_translator_ring_buffer_size( const uint8_t size, translator_parameters_t *
     return -1;
   }
 
-  if( 0 < size ){
+  if( !size ){
     errno = ENOTSUP;
     return -1;
   }
