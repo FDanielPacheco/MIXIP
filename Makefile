@@ -10,11 +10,11 @@ LLVM_MC = llvm-mc
 LLVM_LD = clang
 
 # Target Architecture (adjust as needed)
-TARGET_ARCH_LLC = arm
-TARGET_ARCH_CC = arm-linux-gnueabihf
+#TARGET_ARCH_LLC = arm
+#TARGET_ARCH_CC = arm-linux-gnueabihf
 
-#TARGET_ARCH_LLC = x86-64
-#TARGET_ARCH_CC = x86_64-linux-gnu
+TARGET_ARCH_LLC = x86-64
+TARGET_ARCH_CC = x86_64-linux-gnu
 
 #TARGET_ARCH_LLC = aarch64
 #TARGET_ARCH_CC = aarch64-linux-gnu
@@ -124,7 +124,7 @@ TARGET5_SRC = $(SRC_DIR)/$(TARGET5_NAME).c
 TARGET5_LL = $(LLVM_IR_DIR)/$(TARGET5_NAME).ll
 TARGET5_S = $(ASM_DIR)/$(TARGET5_NAME).s
 TARGET5_OBJ = $(BUILD_DIR)/$(TARGET5_NAME).o $(COMMON_LIBS_O)
-TARGET5_SO = $(BUILD_DIR)/$(TARGET5_NAME).so
+TARGET5_SO = $(BUILD_DIR)/lib$(TARGET5_NAME).so
 
 # --- Build Rules ---
 # Create build directories
@@ -205,10 +205,16 @@ release_binaries:
 	@cd release && zip -r mixip-$(TARGET_ARCH_CC).zip mixip-$(TARGET_ARCH_CC)
 
 release_dev_env:
-	@mkdir -p release/mixip-dev-env-$(TARGET_ARCH_CC)/include
-	@cp include/mixip.h release/mixip-dev-env-$(TARGET_ARCH_CC)/include/mixip.h
+	@mkdir -p release/mixip-dev-env-$(TARGET_ARCH_CC)/.mixip
+	@cp include/mixip.h release/mixip-dev-env-$(TARGET_ARCH_CC)/.mixip/mixip.h
 	@cp drivers/Makefile release/mixip-dev-env-$(TARGET_ARCH_CC)/Makefile
-	@cp build/lib/$(TARGET_ARCH_CC)/mixip.so release/mixip-dev-env-$(TARGET_ARCH_CC)/include/mixip.so
+	@cp build/lib/$(TARGET_ARCH_CC)/libmixip.so release/mixip-dev-env-$(TARGET_ARCH_CC)/.mixip/libmixip.so
+	@echo "Creating release installation bash..."
+	@echo   "#!/bin/bash" \
+			"\n" \
+			"\ncp .mixip/mixip.h /usr/local/include/mixip.h" \
+			"\ncp .mixip/libmixip.so /usr/lib/$(TARGET_ARCH_CC)/libmixip.so" \
+			"\n" > ./release/mixip-dev-env-$(TARGET_ARCH_CC)/install.sh
 	@echo "Zipping the dev env release mixip-dev-env-$(TARGET_ARCH_CC).zip..."
 	@cd release && zip -r mixip-dev-env-$(TARGET_ARCH_CC).zip mixip-dev-env-$(TARGET_ARCH_CC) 
 

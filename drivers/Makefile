@@ -2,7 +2,6 @@ CC = clang
 
 CFLAGS = -std=gnu99 -I/usr/local/include/ -I../include
 CFLAGS += -Wall -Wextra -Wpedantic -Wshadow -Wconversion -g -Iinclude -fPIC
-CFLAGS += -D$(platform)
 LD_FLAGS = -shared
 LD_FLAGS += -lc -lpthread -lrt -lm -lserialposix -lxml2 -lgpiod
 
@@ -16,6 +15,7 @@ endif
 	@echo "Creating a new driver library $(name)..."
 	@mkdir -p ./src
 	@mkdir -p ./include
+	@mkdir -p ./docs
 	@echo   "#include <mixip.h>" \
 			"\n" \
 			"\nint dsetup( serial_manager_t * serial, const char * name ){\n" \
