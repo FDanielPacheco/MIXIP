@@ -330,7 +330,8 @@ main( int argc, char **argv ){
   
           if( flow->network ){
             sem_post( &flow->rx_done );
-            printf("[%d] waiting for reading ... ", getpid( ));
+            printf("[%d] Waiting for reading 1... \n", getpid( ));
+            fflush( stdout );
             sem_wait( &flow->rx_wait );
           }
 
@@ -340,7 +341,8 @@ main( int argc, char **argv ){
     
         if( flow->network ){
           sem_post( &flow->rx_done );
-          printf("[%d] waiting for reading ... ", getpid( ));
+          printf("[%d] Waiting for reading 2... \n", getpid( ));
+          fflush( stdout );
           sem_wait( &flow->rx_wait );
         }
 
@@ -375,10 +377,9 @@ main( int argc, char **argv ){
         while( 1 != (result = serial_wait( serial, pollrate_ms ) ) ){
           if( -1 == usleep( pollrate_us ) )
             perror("usleep");
-  
+
           if( flow->network ){
             sem_post( &flow->tx_done );
-            printf("[%d] waiting for writting ... ", getpid( ));
             sem_wait( &flow->tx_wait );
           }
           
@@ -388,12 +389,37 @@ main( int argc, char **argv ){
 
         if( flow->network ){
           sem_post( &flow->tx_done );
-          printf("[%d] waiting for writting ... ", getpid( ));
           sem_wait( &flow->tx_wait );
         }
+        
+        sem_post( &tx.buf->empty );
+   
+        struct timespec ts;
+        if( -1 == clock_gettime( CLOCK_REALTIME, &ts ) ){
+          printf("[%d] Failed in clock_gettime ...\n", getpid( ) );
+          shutdown( proc2 );
+        }
+        ts.tv_nsec += (uint32_t) pollrate_us * 1000;
+        //                            \__ timeout for the semaphore 
 
-        sem_post( &tx.buf->empty);
-        sem_wait( &tx.buf->available );
+        int status;
+        while( -1 == (status = sem_timedwait( &tx.buf->available, &ts ) ) ){
+          switch( errno ){
+            case ETIMEDOUT:
+              if( flow->network ){
+                sem_post( &flow->tx_done );
+                sem_wait( &flow->tx_wait );
+              }
+              break;
+            
+            case EINTR:
+              printf("[%d] Interrupted by signal in sem_timedwait...\n", getpid( ) );
+              shutdown( proc2 );
+
+            default:
+              perror("sem_timedwait");
+          }
+        }
 
         // Give to the driver the information that arrived from the nic, let him decide what to do with it
         if( -1 == driver.dwrite( tx.buf ) ){                                           

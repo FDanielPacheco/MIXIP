@@ -275,6 +275,11 @@ main( int argc, char **argv ){
         printf("[%d] Capture from NIC process with a %d ring buffer and compact to %d bytes segments ...\n", getpid( ), parameters.tra->size_rb, parameters.tra->size_sls );
         fflush( stdout );
 
+        if( signal_flag ){
+          printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
+          return EXIT_SUCCESS;
+        }
+
         frame.len = (size_t) read( nic, frame.data, sizeof(frame.data) ); 
         if( 0 < frame.len ){
           if( 1 > ( result = et_encode( &frame ) ) ){
@@ -356,10 +361,6 @@ main( int argc, char **argv ){
           
         }
 
-        if( signal_flag ){
-          printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
-          return EXIT_SUCCESS;
-        }
       }
       if( signal_flag ){
         printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
