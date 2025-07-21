@@ -36,11 +36,13 @@
 #include <semaphore.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <cobs.h>
 #include <rawsoc.h>
 #include <math.h>
 #include <shmbuf.h>
 #include <mixip.h>
+#include <signal.h>
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Definitions
@@ -77,15 +79,20 @@ typedef struct{
   sem_t        sem;
 } mem_queue_t ;
 
+struct memshared{
+  translator_parameters_t * tra;
+  char                      path[ NAME_MAX ];
+};
+
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Prototypes
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 
 static error_t parseArgs( int key, char * arg, struct argp_state *state );
+void cleanup( buffer_t * buf, mem_queue_t * queue, struct memshared * param );
+void signalhandler( int signum );
 
 int8_t et_encode( buffer_t * src );
-
-void cleanup( buffer_t * buf, mem_queue_t * queue );
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Global variables
@@ -104,9 +111,17 @@ static struct argp_option options[ ] =  {
   
 static struct argp argp = { options, parseArgs, args_doc, doc, NULL, NULL, NULL };
 
+volatile sig_atomic_t signal_flag = 0;
+
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions
  **************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+void
+signalhandler( int signum __attribute__((unused)) ){
+  signal_flag = 1;
+}
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 static error_t
@@ -164,8 +179,9 @@ et_encode( buffer_t * src ){
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 void 
-cleanup( buffer_t * buf, mem_queue_t * queue ){
+cleanup( buffer_t * buf, mem_queue_t * queue, struct memshared * param ){
   if( NULL != buf ) shm_close2( NULL, buf, sizeof(buffer_t) );
+  if( NULL != param ) shm_close2( param->path, param->tra, sizeof(translator_parameters_t) );
   if( NULL != queue ) munmap( queue, sizeof(mem_queue_t) );
 }
 
@@ -185,6 +201,19 @@ main( int argc, char **argv ){
     return EXIT_FAILURE;
   }
 
+  // Establish the signal handler
+  struct sigaction act;
+  act.sa_handler = signalhandler;
+  sigemptyset( &act.sa_mask );
+  act.sa_flags = 0;
+
+  if( -1 == sigaction( SIGTERM, &act, NULL ) || 
+      -1 == sigaction( SIGINT, &act, NULL )  ||
+      -1 == sigaction( SIGQUIT, &act, NULL ) ){
+    perror( "sigaction" );
+    return EXIT_FAILURE;
+  }
+
   // Shared memory definitions
   char path[ 128 ];
   snprintf( path, sizeof(path), "/%s_tx", arguments.name );
@@ -199,18 +228,21 @@ main( int argc, char **argv ){
   // Open the shared memory for the driver to update the serial link segment size and other parameters
   snprintf( path, sizeof(path), "/%s_tx_param", arguments.name );
   printf("[%d] Translator sharing the objects in /dev/shm%s ...\n", getpid( ), path );
-  translator_parameters_t * param = shm_open2( path, sizeof(translator_parameters_t), O_CREAT | O_RDWR, 0666 );
-  if( !param ){
+  struct memshared parameters;
+  strncpy( parameters.path, path, sizeof(parameters.path) );
+  parameters.tra = shm_open2( path, sizeof(translator_parameters_t), O_CREAT | O_RDWR, 0666 );
+  if( !parameters.tra ){
     perror("shm_open2 (param)");
+    cleanup( serial, NULL, NULL );
     return EXIT_FAILURE;
   }
-  param->boot = 0;
+  parameters.tra->boot = 0;
   
   // Connect to the interface
   int nic = atoi( arguments.interface );
   if( !nic ){
     perror("atoi");
-    cleanup( serial, NULL );
+    cleanup( serial, NULL, &parameters );
     return EXIT_FAILURE;
   }
   
@@ -218,14 +250,14 @@ main( int argc, char **argv ){
   mem_queue_t * queue = (mem_queue_t *) mmap( NULL, sizeof( mem_queue_t ), PROT_WRITE | PROT_READ , MAP_ANONYMOUS | MAP_SHARED , -1 , 0 );  
   if( MAP_FAILED == queue ){
     perror("mmap");
-    cleanup( serial, NULL );
+    cleanup( serial, NULL, &parameters );
     return EXIT_FAILURE;
   }
   memset( queue, 0, sizeof( mem_queue_t ) );
   sem_init( &queue->sem, MAP_SHARED, 1 );
   
   const long activation_poll_delay = 2;
-  while( !param->boot ){
+  while( !parameters.tra->boot ){
     sleep( activation_poll_delay );
     printf("[%d] Waiting for eth2ser (%s) activation ...\n", getpid( ), path );
   }
@@ -240,22 +272,22 @@ main( int argc, char **argv ){
     
     for( ; ; ){
       for( ; ; ){
-        printf("[%d] Capture from NIC process with a %d ring buffer and compact to %d bytes segments ...\n", getpid( ), param->size_rb, param->size_sls );
+        printf("[%d] Capture from NIC process with a %d ring buffer and compact to %d bytes segments ...\n", getpid( ), parameters.tra->size_rb, parameters.tra->size_sls );
 
         frame.len = (size_t) read( nic, frame.data, sizeof(frame.data) ); 
         if( 0 < frame.len ){
           if( 1 > ( result = et_encode( &frame ) ) ){
             if( -1 == result ){
               perror("et_encode");
-              cleanup( serial, queue );
+              cleanup( serial, queue, &parameters );
               return EXIT_FAILURE;
             }
             printf("[%d] Failed to encode ethernet frame...\n", getpid( ) );
             break;   
           }
           
-          uint8_t ring_buffer_size = param->size_rb;
-          uint8_t segment_size = param->size_sls;
+          uint8_t ring_buffer_size = parameters.tra->size_rb;
+          uint8_t segment_size = parameters.tra->size_sls;
           uint8_t payload_sz = segment_size - 1 - 1 - 1 - 1;
           //                      SOF Limiter_/  /    \   \_ EOF Limiter
           //                           Window  _/      \_ COBS overhead
@@ -323,7 +355,10 @@ main( int argc, char **argv ){
           
         }
 
-        
+        if( signal_flag ){
+          printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
+          return EXIT_SUCCESS;
+        }
       }
     }
 
@@ -336,7 +371,7 @@ main( int argc, char **argv ){
 
   for( ; ; ){
     nframes = 0;
-    uint8_t ring_buffer_size = param->size_rb;
+    uint8_t ring_buffer_size = parameters.tra->size_rb;
     for( ; ; ){
       sem_wait( &queue->sem );  
       
@@ -376,6 +411,13 @@ main( int argc, char **argv ){
       }
     }
 
+    if( signal_flag ){
+      kill( proc, SIGTERM );
+      waitpid( proc, NULL, 0 );      
+      cleanup( serial, queue, &parameters );
+      printf("[%d] eth2ser process 1 closed...\n", getpid( ) );
+      return EXIT_SUCCESS;
+    }
   }
    
 }

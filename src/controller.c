@@ -35,6 +35,7 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <shmbuf.h>
 #include <time.h>
 #include <dlfcn.h>
@@ -52,7 +53,7 @@ struct arguments{
 
 struct memshared{
   buffer_t * buf;
-  char       path[ 128 ];
+  char       path[ NAME_MAX ];
 };
 
 struct driver{
@@ -308,12 +309,14 @@ main( int argc, char **argv ){
   
           if( flow->network ){
             sem_post( &flow->rx_done );
+            printf("[%d] waiting for reading ... ", getpid( ));
             sem_wait( &flow->rx_wait );
           }
         }
     
         if( flow->network ){
           sem_post( &flow->rx_done );
+          printf("[%d] waiting for reading ... ", getpid( ));
           sem_wait( &flow->rx_wait );
         }
 
@@ -358,13 +361,15 @@ main( int argc, char **argv ){
   
           if( flow->network ){
             sem_post( &flow->tx_done );
+            printf("[%d] waiting for writting ... ", getpid( ));
             sem_wait( &flow->tx_wait );
           } 
         }
    
         if( flow->network ){
-          sem_post( &flow->rx_done );
-          sem_wait( &flow->rx_wait );
+          sem_post( &flow->tx_done );
+          printf("[%d] waiting for writting ... ", getpid( ));
+          sem_wait( &flow->tx_wait );
         }
         
         sem_post( &tx.buf->empty);
@@ -383,8 +388,6 @@ main( int argc, char **argv ){
       }
         
       if( signal_flag ){
-        printf("[%d] Controller interrupted with signal...\n", getpid( ) );
-
         if( -1 == driver.dexit( ) )                                         
           printf("[%d] Driver reported an error during exit, closing...\n", getpid( ) );
 
@@ -396,6 +399,7 @@ main( int argc, char **argv ){
         else
           kill( proc, SIGTERM );
   
+        printf("[%d] Controller interrupted with signal (dwrite/dread)...\n", getpid( ) );
         return EXIT_SUCCESS;
       }  
     }
@@ -418,7 +422,14 @@ main( int argc, char **argv ){
     if( result ){
       serial_close( &serial->sr );
       cleanup( &tx, &rx, serial, flow, driverlib );
+
       kill( proc, SIGTERM );
+      for( uint8_t i = 0 ; i < 2 ; ++i ){
+        waitpid( -1, NULL, 0 );      
+        usleep( 1000 );
+      }
+
+      printf("[%d] Controller driver loop closed...\n", getpid( ) );
       return EXIT_SUCCESS;
     }
     

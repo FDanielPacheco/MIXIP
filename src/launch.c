@@ -586,6 +586,14 @@ main( int argc, char **argv ){
         else
           waitpid( opened_proc[i], &status, 0 );
       }
+
+      // Just to make sure everything is reaped, before closing, do not want to leave zombies around
+      uint8_t repeat = 100;
+      for( uint8_t i = 0 ; i < repeat ; ++i ){
+        waitpid( -1, &status, WNOHANG );
+        usleep( 1000 );
+      }
+
       break;
     }
   }
