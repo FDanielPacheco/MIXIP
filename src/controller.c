@@ -94,6 +94,7 @@ static struct argp_option options[ ] = {
 static struct argp argp = { options, parseArgs, args_doc, doc, NULL, NULL, NULL };
 
 volatile sig_atomic_t signal_flag = 0;
+volatile int          signal_number = 0;
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions
@@ -145,6 +146,7 @@ cleanup( struct memshared * shr1, struct memshared * shr2, serial_manager_t * se
 void
 signalhandler( int signum __attribute__((unused)) ){
   signal_flag = 1;
+  signal_number = signum;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
@@ -192,10 +194,9 @@ load_driver( const char * path, struct driver * dev ){
 void 
 shutdown( const pid_t proc ){
   printf("[%d] Closing the driver ...\n", getpid( ) );
-  if( 0 != proc ){
+  if( 0 < proc ){
     printf("[%d] Killing the process %d...\n", getpid( ), proc );
     kill( proc, SIGTERM );
-    waitpid( proc, NULL, 0 );      
   }
   
   if( signal_flag )
@@ -217,7 +218,7 @@ main( int argc, char **argv ){
   if( !strcmp( arguments.name, "" ) || !strcmp( arguments.serial, "" ) || !strcmp( arguments.driver, "" ) ){
     errno = EINVAL;
     perror("missing arguments");
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
 
@@ -229,10 +230,10 @@ main( int argc, char **argv ){
 
   if( -1 == sigaction( SIGTERM, &act, NULL ) || 
       -1 == sigaction( SIGINT, &act, NULL )  ||
-      -1 == sigaction( SIGQUIT, &act, NULL ) ){
+      -1 == sigaction( SIGCHLD, &act, NULL ) ){
     perror( "sigaction" );
-    shutdown( getppid( ) );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
   
   struct memshared tx;
@@ -241,7 +242,7 @@ main( int argc, char **argv ){
   if( !tx.buf ){
     perror("shm_open2");
     shm_unlink( tx.path );
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
   sem_init( &tx.buf->empty, MAP_SHARED, 0 );
@@ -254,7 +255,7 @@ main( int argc, char **argv ){
     perror("shm_open2");
     shm_close2( tx.path, tx.buf, sizeof(buffer_t) );
     shm_unlink( rx.path );
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
   sem_init( &rx.buf->empty, MAP_SHARED, 0 );
@@ -265,7 +266,7 @@ main( int argc, char **argv ){
   if( MAP_FAILED == flow ){
     perror("mmap flow_t");
     cleanup( &tx, &rx, NULL, NULL, NULL );
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
   flow->network = 0;
@@ -285,7 +286,7 @@ main( int argc, char **argv ){
   if( -1 == serial_open( &serial->sr, arguments.serial, 0, NULL ) ){
     perror("serial_open");
     cleanup( &tx, &rx, serial, flow, NULL );
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
   serial_manage( serial, EPOLLIN | EPOLLOUT );
@@ -302,7 +303,7 @@ main( int argc, char **argv ){
   if( NULL == ( driverlib = load_driver( arguments.driver, &driver ) ) ){
     serial_close( &serial->sr );
     cleanup( &tx, &rx, serial, flow, NULL );
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
 
@@ -314,131 +315,147 @@ main( int argc, char **argv ){
     printf("[%d] Driver reported an error during setup, closing...\n", getpid( ) );
     serial_close( &serial->sr );
     cleanup( &tx, &rx, serial, flow, driverlib );
-    shutdown( getppid( ) );
+    kill( getppid( ), SIGCHLD );    
     return EXIT_FAILURE;
   }
 
-  pid_t proc = fork( );
 
-  if( !proc ){
-    pid_t proc2 = fork( );
+  enum{
+    PID_READ = 0,
+    PID_WRITE = 1,
+  };
+  uint8_t nproc = 2;
+  pid_t proc[nproc]; 
+  //            \_ Controller has 3 processes: Master (loop), Slave 1 (read), Slave 2 (write)
+
+  proc[ PID_READ ] = fork( );
+  if( !proc[ PID_READ ] ){
     for( ; ; ){
-      if( !proc2 ){
-        while( 0 != (result = serial_wait( serial, pollrate_ms ) ) ){
-          if( -1 == usleep( pollrate_us ) )
-            perror("usleep");
-  
-          if( flow->network ){
-            sem_post( &flow->rx_done );
-            printf("[%d] Waiting for reading 1... \n", getpid( ));
-            fflush( stdout );
-            sem_wait( &flow->rx_wait );
-          }
-
-          if( signal_flag )
-            shutdown( getppid( ) );
+      while( 0 != (result = serial_wait( serial, pollrate_ms ) ) ){
+        if( -1 == usleep( pollrate_us ) ){
+          perror("usleep");
+          kill( getppid( ), SIGCHLD );    
+          return EXIT_FAILURE;          
         }
-    
+
         if( flow->network ){
           sem_post( &flow->rx_done );
-          printf("[%d] Waiting for reading 2... \n", getpid( ));
-          fflush( stdout );
           sem_wait( &flow->rx_wait );
         }
 
-        result = 0;
-
-        while( 0 < ( rx.buf->len = serial_available( &serial->sr ) ) ){
-          if( sizeof( rx.buf->data ) < rx.buf->len )
-            rx.buf->len = serial_read( (char *) rx.buf->data, sizeof( rx.buf->data ), 0, sizeof( rx.buf->data ) - 1, &serial->sr );
-          else
-            rx.buf->len = serial_read( (char *) rx.buf->data, sizeof( rx.buf->data ), 0, rx.buf->len, &serial->sr );
-
-          if( !rx.buf->len ){
-            errno = EBUSY;
-            perror("serial_read");
-            result = 1;
-          }
-
-          // Give to the driver the information that arrived, let him decide what to do with it
-          if( -1 == driver.dread( rx.buf ) ){                                           
-            printf("[%d] Driver reported an error during read operation, closing...\n", getpid( ) );
-            result = 1;
-          }
-
-          if( result )
-            shutdown( getppid( ) );          
-
-          sem_post( &rx.buf->available );
-          sem_wait( &rx.buf->empty );
+        if( signal_flag ){
+          printf("[%d] Controller read process closed...\n", getpid( ) );
+          return EXIT_SUCCESS;          
         }
       }
-      else{
-        while( 1 != (result = serial_wait( serial, pollrate_ms ) ) ){
-          if( -1 == usleep( pollrate_us ) )
-            perror("usleep");
+  
+      if( flow->network ){
+        sem_post( &flow->rx_done );
+        sem_wait( &flow->rx_wait );
+      }
 
-          if( flow->network ){
-            sem_post( &flow->tx_done );
-            sem_wait( &flow->tx_wait );
-          }
-          
-          if( signal_flag )
-            shutdown( proc2 );
+      result = 0;
+
+      while( 0 < ( rx.buf->len = serial_available( &serial->sr ) ) ){
+        if( sizeof( rx.buf->data ) < rx.buf->len )
+          rx.buf->len = serial_read( (char *) rx.buf->data, sizeof( rx.buf->data ), 0, sizeof( rx.buf->data ) - 1, &serial->sr );
+        else
+          rx.buf->len = serial_read( (char *) rx.buf->data, sizeof( rx.buf->data ), 0, rx.buf->len, &serial->sr );
+
+        if( !rx.buf->len ){
+          errno = EBUSY;
+          perror("serial_read");
+          result = 1;
         }
+
+        // Give to the driver the information that arrived, let him decide what to do with it
+        if( -1 == driver.dread( rx.buf ) ){                                           
+          printf("[%d] Driver reported an error during read operation, closing...\n", getpid( ) );
+          result = 1;
+        }
+
+        if( result ){
+          kill( getppid( ), SIGCHLD );    
+          return EXIT_FAILURE;          
+        }
+
+        sem_post( &rx.buf->available );
+        sem_wait( &rx.buf->empty );
+      }
+    }
+  }
+
+  proc[ PID_WRITE ] = fork( );
+  if( !proc[ PID_WRITE ]){
+    for( ; ; ){
+      while( 1 != (result = serial_wait( serial, pollrate_ms ) ) ){
+        if( -1 == usleep( pollrate_us ) )
+          perror("usleep");
 
         if( flow->network ){
           sem_post( &flow->tx_done );
           sem_wait( &flow->tx_wait );
         }
         
-        sem_post( &tx.buf->empty );
-   
-        struct timespec ts;
-        if( -1 == clock_gettime( CLOCK_REALTIME, &ts ) ){
-          printf("[%d] Failed in clock_gettime ...\n", getpid( ) );
-          shutdown( proc2 );
+        if( signal_flag ){
+          printf("[%d] Controller write process closed...\n", getpid( ) );
+          return EXIT_SUCCESS;          
         }
-        ts.tv_nsec += (uint32_t) pollrate_us * 1000;
-        //                            \__ timeout for the semaphore 
-
-        int status;
-        while( -1 == (status = sem_timedwait( &tx.buf->available, &ts ) ) ){
-          switch( errno ){
-            case ETIMEDOUT:
-              if( flow->network ){
-                sem_post( &flow->tx_done );
-                sem_wait( &flow->tx_wait );
-              }
-              break;
-            
-            case EINTR:
-              printf("[%d] Interrupted by signal in sem_timedwait...\n", getpid( ) );
-              shutdown( proc2 );
-
-            default:
-              perror("sem_timedwait");
-          }
-        }
-
-        // Give to the driver the information that arrived from the nic, let him decide what to do with it
-        if( -1 == driver.dwrite( tx.buf ) ){                                           
-          printf("[%d] Driver reported an error during write operation, closing...\n", getpid( ) );
-          shutdown( proc2 );
-        }
-
-        size_t len = serial_write( &serial->sr, tx.buf->data , tx.buf->len );
-        fflush( serial->sr.fp );
-      }
-    
-      if( signal_flag ){
-        if( !proc2 )
-          shutdown( getppid( ) );
-        else
-          shutdown( proc2 );
       }
 
-    }
+      if( flow->network ){
+        sem_post( &flow->tx_done );
+        sem_wait( &flow->tx_wait );
+      }
+      
+      sem_post( &tx.buf->empty );
+  
+      struct timespec ts;
+      if( -1 == clock_gettime( CLOCK_REALTIME, &ts ) ){
+        printf("[%d] Failed in clock_gettime ...\n", getpid( ) );
+        kill( getppid( ), SIGCHLD );    
+        return EXIT_FAILURE;          
+      }
+      ts.tv_nsec += (uint32_t) pollrate_us * 1000;
+      //                            \__ timeout for the semaphore 
+
+      int status;
+      while( -1 == (status = sem_timedwait( &tx.buf->available, &ts ) ) ){
+        switch( errno ){
+          case ETIMEDOUT:
+            if( flow->network ){
+              sem_post( &flow->tx_done );
+              sem_wait( &flow->tx_wait );
+            }
+            break;
+          
+          case EINTR:
+            printf("[%d] Interrupted by signal in sem_timedwait...\n", getpid( ) );
+            return EXIT_SUCCESS;          
+
+          default:
+            perror("sem_timedwait");
+        }
+      }
+
+      // Give to the driver the information that arrived from the nic, let him decide what to do with it
+      if( -1 == driver.dwrite( tx.buf ) ){                                           
+        printf("[%d] Driver reported an error during write operation, closing...\n", getpid( ) );
+        kill( getppid( ), SIGCHLD );    
+        return EXIT_FAILURE;          
+      }
+
+      size_t len = serial_write( &serial->sr, tx.buf->data , tx.buf->len );
+      fflush( serial->sr.fp );
+
+      if( len != tx.buf->len ){
+        printf("[%d] ", getpid( ) );
+        perror("serial_write");
+        kill( getppid( ), SIGCHLD );    
+        return EXIT_FAILURE;          
+      }
+
+    }    
   }
 
   printf("[%d] Driver launched %s...\n", getpid( ), arguments.driver);
@@ -450,32 +467,40 @@ main( int argc, char **argv ){
       result = 1;        
     }
 
-    if( signal_flag )
-      printf("[%d] Controller driver loop interrupted with signal...\n", getpid( ) );
- 
     if( signal_flag || result ){
-      printf("[%d] Killing the process %d...\n", getpid( ), proc);
-      kill( proc, SIGTERM );
-      waitpid( proc, NULL, 0 );      
-
+      if( signal_flag )
+        printf("[%d] Controller driver loop interrupted with signal...\n", getpid( ) );
+      
       printf("[%d] Driver executing dexit...\n", getpid( ));
       if( -1 == driver.dexit( ) )                                         
         printf("[%d] Driver reported an error during exit, closing...\n", getpid( ) );      
+        
+      int status;
+             
+      for( uint8_t i = 0 ; i < nproc ; ++i ){
+        printf("[%d] Killing the process [i=%d] %d...\n", getpid( ), i, proc[i] );
+        if( -1 == kill( proc[i], SIGQUIT ) )
+          perror( "kill" );
+        else{
+          waitpid( proc[i], &status, 0 );
+          printf("[%d] Process [%d] closed with %s\n", getpid( ), proc[i], status == EXIT_SUCCESS ? "success" : "error" );        
+        }      
+      }
 
       serial_close( &serial->sr );
       cleanup( &tx, &rx, serial, flow, driverlib );
-        
-      printf("[%d] Controller driver loop closed...\n", getpid( ) );
-    }
 
-    if( result ){
-      printf("[%d] Killing the process %d...\n", getpid( ), getppid( ) );
-      kill( getppid( ), SIGTERM );    
-    }
+      if( SIGCHLD == signal_number || result ){
+        waitpid( -1, &status, 0 );
+        printf("[%d] Some process closed with %s\n", getpid( ), status == EXIT_SUCCESS ? "success" : "error" );                
 
-    if( signal_flag || result )
+        printf("[%d] Hey %d there was a problem, im closing...\n", getpid( ), getppid( ) );
+        kill( getppid( ), SIGCHLD );    
+      }
+
       return EXIT_SUCCESS;
-    
+    }
+
   }
 }
 

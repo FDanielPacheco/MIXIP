@@ -91,6 +91,7 @@ static struct argp_option options[ ] = {
 static struct argp argp = { options, parseArgs, args_doc, doc, NULL, NULL, NULL };
 
 volatile sig_atomic_t signal_flag = 0;
+volatile int          signal_number = 0;
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions
@@ -100,7 +101,9 @@ volatile sig_atomic_t signal_flag = 0;
 void
 signalhandler( int signum __attribute__((unused)) ){
   signal_flag = 1;
+  signal_number = signum;
 }
+
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 static error_t
@@ -284,7 +287,8 @@ main( int argc, char **argv ){
   if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) ){
     errno = EINVAL;
     perror("missing arguments");
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
 
   // Establish the signal handler
@@ -295,9 +299,11 @@ main( int argc, char **argv ){
 
   if( -1 == sigaction( SIGTERM, &act, NULL ) || 
       -1 == sigaction( SIGINT, &act, NULL )  ||
-      -1 == sigaction( SIGQUIT, &act, NULL ) ){
+      -1 == sigaction( SIGQUIT, &act, NULL ) ||
+      -1 == sigaction( SIGCHLD, &act, NULL ) ){
     perror( "sigaction" );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
 
 
@@ -309,7 +315,8 @@ main( int argc, char **argv ){
   buffer_t * serial = shm_open2( path, sizeof(buffer_t), O_RDWR, 0 );
   if( !serial ){
     perror("shm_open2");
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
  
   // Connect to the interface
@@ -317,7 +324,8 @@ main( int argc, char **argv ){
   if( !nic ){
     perror("atoi");
     cleanup( serial );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
 
   flag_t flag = {0};
@@ -380,7 +388,8 @@ main( int argc, char **argv ){
     if( -1 == result ){
       perror("algorithm");
       cleanup( serial );
-      return EXIT_FAILURE;
+      kill( getppid( ), SIGCHLD );
+      return EXIT_FAILURE;  
     }
 
     sem_post( &serial->empty );    
@@ -388,7 +397,7 @@ main( int argc, char **argv ){
     if( signal_flag ){
       printf("[%d] Closing the ser2eth...\n", getpid( ));
       cleanup( serial );
-      return EXIT_SUCCESS;
+      return EXIT_SUCCESS;  
     }
   }
 }

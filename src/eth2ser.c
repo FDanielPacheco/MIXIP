@@ -112,6 +112,7 @@ static struct argp_option options[ ] =  {
 static struct argp argp = { options, parseArgs, args_doc, doc, NULL, NULL, NULL };
 
 volatile sig_atomic_t signal_flag = 0;
+volatile int          signal_number = 0;
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions
@@ -121,6 +122,7 @@ volatile sig_atomic_t signal_flag = 0;
 void
 signalhandler( int signum __attribute__((unused)) ){
   signal_flag = 1;
+  signal_number = signum;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
@@ -198,7 +200,8 @@ main( int argc, char **argv ){
   if( !strcmp( arguments.name, "" ) || !strcmp( arguments.interface, "" ) ){
     errno = EINVAL;
     perror("missing arguments");
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
 
   // Establish the signal handler
@@ -209,9 +212,10 @@ main( int argc, char **argv ){
 
   if( -1 == sigaction( SIGTERM, &act, NULL ) || 
       -1 == sigaction( SIGINT, &act, NULL )  ||
-      -1 == sigaction( SIGQUIT, &act, NULL ) ){
+      -1 == sigaction( SIGCHLD, &act, NULL ) ){
     perror( "sigaction" );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
 
   // Shared memory definitions
@@ -222,7 +226,8 @@ main( int argc, char **argv ){
   buffer_t * serial = shm_open2( path, sizeof(buffer_t), O_RDWR, 0 );
   if( !serial ){
     perror("shm_open2 (serial)");
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
   
   // Open the shared memory for the driver to update the serial link segment size and other parameters
@@ -234,7 +239,8 @@ main( int argc, char **argv ){
   if( !parameters.tra ){
     perror("shm_open2 (param)");
     cleanup( serial, NULL, NULL );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
   parameters.tra->boot = 0;
   
@@ -243,7 +249,8 @@ main( int argc, char **argv ){
   if( !nic ){
     perror("atoi");
     cleanup( serial, NULL, &parameters );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
   
   // Create the circle buffer oriented to frame
@@ -251,7 +258,8 @@ main( int argc, char **argv ){
   if( MAP_FAILED == queue ){
     perror("mmap");
     cleanup( serial, NULL, &parameters );
-    return EXIT_FAILURE;
+    kill( getppid( ), SIGCHLD );
+    return EXIT_FAILURE;  
   }
   memset( queue, 0, sizeof( mem_queue_t ) );
   sem_init( &queue->sem, MAP_SHARED, 1 );
@@ -260,13 +268,26 @@ main( int argc, char **argv ){
   while( !parameters.tra->boot ){
     sleep( activation_poll_delay );
     printf("[%d] Waiting for eth2ser (%s) activation ...\n", getpid( ), path );
+
+    if( signal_flag ){
+      kill( getppid( ), SIGCHLD );
+      return EXIT_FAILURE;  
+    }
   }
 
   int8_t result;
 
+  enum{
+    PID_PRODUCER = 0,
+    PID_CONSUMER = 1,
+  };  
+  uint8_t nproc = 2;
+  pid_t  proc[nproc];
+  //             \__eth2ser has three processes, one is the NIC producer and serial consumer 
+
   // Create the multiprocess
-  pid_t proc = fork( );
-  if( !proc ){    
+  proc[PID_PRODUCER] = fork( );
+  if( !proc[PID_PRODUCER] ){    
     const uint8_t limiter = 0x00;
     buffer_t frame;
     
@@ -277,7 +298,7 @@ main( int argc, char **argv ){
 
         if( signal_flag ){
           printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
-          return EXIT_SUCCESS;
+          return EXIT_SUCCESS;  
         }
 
         frame.len = (size_t) read( nic, frame.data, sizeof(frame.data) ); 
@@ -285,8 +306,8 @@ main( int argc, char **argv ){
           if( 1 > ( result = et_encode( &frame ) ) ){
             if( -1 == result ){
               perror("et_encode");
-              cleanup( serial, queue, &parameters );
-              return EXIT_FAILURE;
+              kill( getppid( ), SIGCHLD );
+              return EXIT_FAILURE;  
             }
             printf("[%d] Failed to encode ethernet frame...\n", getpid( ) );
             break;   
@@ -352,78 +373,107 @@ main( int argc, char **argv ){
               if( ring_buffer_size >= queue->nframes + 1 )
                 queue->nframes ++;
               
-              fflush( stdout );
             }
 
             sem_post( &queue->sem );
-          }
-
-          
+          }          
         }
-
       }
+
       if( signal_flag ){
         printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
-        return EXIT_SUCCESS;
+        return EXIT_SUCCESS;  
       }
     }
 
   }
 
-  printf("[%d] Write to serial port process ...\n", getpid( ) );
+  proc[ PID_CONSUMER ] = fork( );
+  if( !proc[ PID_CONSUMER ] ){
 
-  const uint32_t pollrate = 10e3;
-  uint8_t nframes = 0;
-
-  for( ; ; ){
-    nframes = 0;
-    uint8_t ring_buffer_size = parameters.tra->size_rb;
+    printf("[%d] Write to serial port process ...\n", getpid( ) );
+  
+    const uint32_t pollrate = 10e3;
+    uint8_t nframes = 0;
+  
     for( ; ; ){
-      if( signal_flag ){
-        kill( proc, SIGTERM );
-        cleanup( serial, queue, &parameters );
-        printf("[%d] eth2ser process 1 closed...\n", getpid( ) );
-        return EXIT_SUCCESS;
-      }
+      nframes = 0;
+      uint8_t ring_buffer_size = parameters.tra->size_rb;
+      for( ; ; ){
+        if( signal_flag ){
 
-      sem_wait( &queue->sem );  
-      
-      if( 0 < queue->nframes ){
-        nframes = ( queue->head - queue->tail + ring_buffer_size ) % ring_buffer_size ;
-        if( !nframes )
-          nframes = ring_buffer_size;
+        }
+  
+        sem_wait( &queue->sem );  
         
+        if( 0 < queue->nframes ){
+          nframes = ( queue->head - queue->tail + ring_buffer_size ) % ring_buffer_size ;
+          if( !nframes )
+            nframes = ring_buffer_size;
+          
+          sem_post( &queue->sem );
+          break;
+        }
+  
         sem_post( &queue->sem );
-        break;
+        usleep( pollrate );
+      }
+      
+      for( size_t i = 0 ; i < nframes ; ++i ){
+        sem_wait( &queue->sem );
+        eth_frame_t frame;
+        memcpy( &frame, &(queue->frames[ queue->tail ]), sizeof(frame) );
+        
+        if( 0 < queue->nframes )
+          queue->nframes --;
+        
+        if( ring_buffer_size <= queue->tail + 1 )
+          queue->tail = 0;
+        else 
+          queue->tail ++;        
+  
+        sem_post( &queue->sem );
+        
+        for( size_t j = 0 ; j < frame.nsegments ; ++j ){
+          sem_wait( &serial->empty );
+          memcpy( serial->data, frame.frame[ j ].data, frame.frame[ j ].length );
+          serial->len = frame.frame[ j ].length;
+          sem_post( &serial->available );
+        }
+      }
+  
+    }
+  }
+
+  printf("[%d] Translator (eth2ser) monitor ...\n", getpid( ));
+  int status;
+  for( ; ; ){
+    sleep( 10 );
+    
+    if( signal_flag ){  
+      for( uint8_t i = 0 ; i < nproc ; ++i ){
+        printf("[%d] Killing the process [i=%d] %d...\n", getpid( ), i, proc[i] );
+        if( -1 == kill( proc[i], SIGQUIT ) )
+          perror( "kill" );
+        else{
+          waitpid( proc[i], &status, 0 );
+          printf("[%d] Process [%d] closed with %s\n", getpid( ), proc[i], status == EXIT_SUCCESS ? "success" : "error" );        
+        }      
       }
 
-      sem_post( &queue->sem );
-      usleep( pollrate );
+      cleanup( serial, queue, &parameters );
+      
+      if( SIGCHLD == signal_number ){
+        waitpid( -1, &status, 0 );
+        printf("[%d] Some process closed with %s\n", getpid( ), status == EXIT_SUCCESS ? "success" : "error" );                
+
+        printf("[%d] Hey %d there was a problem, im closing...\n", getpid( ), getppid( ) );
+        kill( getppid( ), SIGCHLD );    
+      }
+
+      return EXIT_SUCCESS;
     }
     
-    for( size_t i = 0 ; i < nframes ; ++i ){
-      sem_wait( &queue->sem );
-      eth_frame_t frame;
-      memcpy( &frame, &(queue->frames[ queue->tail ]), sizeof(frame) );
-      
-      if( 0 < queue->nframes )
-        queue->nframes --;
-      
-      if( ring_buffer_size <= queue->tail + 1 )
-        queue->tail = 0;
-      else 
-        queue->tail ++;        
-
-      sem_post( &queue->sem );
-      
-      for( size_t j = 0 ; j < frame.nsegments ; ++j ){
-        sem_wait( &serial->empty );
-        memcpy( serial->data, frame.frame[ j ].data, frame.frame[ j ].length );
-        serial->len = frame.frame[ j ].length;
-        sem_post( &serial->available );
-      }
-    }
-
   }
    
 }

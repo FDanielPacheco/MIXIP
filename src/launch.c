@@ -101,6 +101,7 @@ static struct argp_option options[ ] = {
 static struct argp argp = { options, parseArgs, args_doc, doc, NULL, NULL, NULL };
 
 volatile sig_atomic_t signal_flag = 0;
+volatile int          signal_number = 0;
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
  * Functions
@@ -135,6 +136,7 @@ parseArgs( int key, char * arg, struct argp_state * state ){
 void
 signalhandler( int signum __attribute__((unused)) ){
   signal_flag = 1;
+  signal_number = signum;
 }
 
 /**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
@@ -390,7 +392,7 @@ main( int argc, char **argv ){
     return -1;
   }
 
-  // Establish the signal handler
+  // Establish the signal handler for user and child signals
   struct sigaction act;
   act.sa_handler = signalhandler;
   sigemptyset( &act.sa_mask );
@@ -398,10 +400,12 @@ main( int argc, char **argv ){
 
   if( -1 == sigaction( SIGTERM, &act, NULL ) || 
       -1 == sigaction( SIGINT, &act, NULL )  ||
-      -1 == sigaction( SIGQUIT, &act, NULL ) ){
+      -1 == sigaction( SIGQUIT, &act, NULL ) ||
+      -1 == sigaction( SIGCHLD, &act, NULL ) ){
     perror( "sigaction" );
     return EXIT_FAILURE;
-  }
+  }  
+
 
   pid_t opened_proc[ 4 ];
   int status, n_proc = 0;
@@ -576,22 +580,21 @@ main( int argc, char **argv ){
 
   for( ; ; ){
     sleep( 10 );
-    waitpid( -1, &status, WNOHANG );
 
     if( signal_flag ){
-      for( int i = 0 ; i < n_proc ; ++i ){
-        printf("[%d] Killing the process %d...\n", getpid( ), opened_proc[i] );
-        if( -1 == kill( opened_proc[i], SIGTERM ) )
-          perror( "kill" );
-        else
-          waitpid( opened_proc[i], &status, 0 );
+      if( SIGCHLD == signal_number ){
+        waitpid( -1, &status, 0 );
+        printf("[%d] Some process closed with %s\n", getpid( ), status == EXIT_SUCCESS ? "success" : "error" );                
       }
 
-      // Just to make sure everything is reaped, before closing, do not want to leave zombies around
-      uint8_t repeat = 100;
-      for( uint8_t i = 0 ; i < repeat ; ++i ){
-        waitpid( -1, &status, WNOHANG );
-        usleep( 1000 );
+      for( int i = 0 ; i < n_proc ; ++i ){
+        printf("[%d] Killing the process [i=%d] %d...\n", getpid( ), i, opened_proc[i] );
+        if( -1 == kill( opened_proc[i], SIGTERM ) )
+          perror( "kill" );
+        else{
+          waitpid( opened_proc[i], &status, 0 );
+          printf("[%d] Process [%d] closed with %s\n", getpid( ), opened_proc[i], status == EXIT_SUCCESS ? "success" : "error" );        
+        }
       }
 
       break;
