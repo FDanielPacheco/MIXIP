@@ -71,6 +71,7 @@ struct driver{
 static error_t parseArgs( int key, char * arg, struct argp_state *state );
 void cleanup( struct memshared * shr1, struct memshared * shr2, serial_manager_t * serial, flow_t * stop, void * handle );
 void signalhandler( int signum );
+void shutdown( const pid_t proc );
 
 void * load_driver( const char * path, struct driver * dev );
 
@@ -174,7 +175,7 @@ load_driver( const char * path, struct driver * dev ){
                                 ( void (**)(void) ) &dev->dexit 
                               };
 
-  for( int i = 0 ; i < 4 ; ++i ){
+  for( int i = 0 ; i < 5 ; ++i ){
     // According to the ISO C standard, POSIX.1-2008
     * ( void ** ) devs[ i ] = dlsym( handle, func[ i ] );
     err = dlerror( );
@@ -185,6 +186,22 @@ load_driver( const char * path, struct driver * dev ){
   }  
 
   return handle;
+}
+
+/**************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+void 
+shutdown( const pid_t proc ){
+  printf("[%d] Closing the driver ...\n", getpid( ) );
+  if( 0 != proc ){
+    printf("[%d] Killing the process %d...\n", getpid( ), proc );
+    kill( proc, SIGTERM );
+    waitpid( proc, NULL, 0 );      
+  }
+  
+  if( signal_flag )
+    printf("[%d] Controller interrupted with signal (dwrite/dread)...\n", getpid( ) );
+
+  exit( EXIT_SUCCESS );
 }
 
 /***************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
@@ -200,6 +217,7 @@ main( int argc, char **argv ){
   if( !strcmp( arguments.name, "" ) || !strcmp( arguments.serial, "" ) || !strcmp( arguments.driver, "" ) ){
     errno = EINVAL;
     perror("missing arguments");
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
 
@@ -213,6 +231,7 @@ main( int argc, char **argv ){
       -1 == sigaction( SIGINT, &act, NULL )  ||
       -1 == sigaction( SIGQUIT, &act, NULL ) ){
     perror( "sigaction" );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
   
@@ -222,6 +241,7 @@ main( int argc, char **argv ){
   if( !tx.buf ){
     perror("shm_open2");
     shm_unlink( tx.path );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
   sem_init( &tx.buf->empty, MAP_SHARED, 0 );
@@ -234,6 +254,7 @@ main( int argc, char **argv ){
     perror("shm_open2");
     shm_close2( tx.path, tx.buf, sizeof(buffer_t) );
     shm_unlink( rx.path );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
   sem_init( &rx.buf->empty, MAP_SHARED, 0 );
@@ -244,6 +265,7 @@ main( int argc, char **argv ){
   if( MAP_FAILED == flow ){
     perror("mmap flow_t");
     cleanup( &tx, &rx, NULL, NULL, NULL );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
   flow->network = 0;
@@ -263,6 +285,7 @@ main( int argc, char **argv ){
   if( -1 == serial_open( &serial->sr, arguments.serial, 0, NULL ) ){
     perror("serial_open");
     cleanup( &tx, &rx, serial, flow, NULL );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
   serial_manage( serial, EPOLLIN | EPOLLOUT );
@@ -279,6 +302,7 @@ main( int argc, char **argv ){
   if( NULL == ( driverlib = load_driver( arguments.driver, &driver ) ) ){
     serial_close( &serial->sr );
     cleanup( &tx, &rx, serial, flow, NULL );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
 
@@ -290,28 +314,28 @@ main( int argc, char **argv ){
     printf("[%d] Driver reported an error during setup, closing...\n", getpid( ) );
     serial_close( &serial->sr );
     cleanup( &tx, &rx, serial, flow, driverlib );
+    shutdown( getppid( ) );
     return EXIT_FAILURE;
   }
 
   pid_t proc = fork( );
 
   if( !proc ){
-    proc = fork( );
+    pid_t proc2 = fork( );
     for( ; ; ){
-      if( !proc ){
+      if( !proc2 ){
         while( 0 != (result = serial_wait( serial, pollrate_ms ) ) ){
-          if( -1 == usleep( pollrate_us ) ){
+          if( -1 == usleep( pollrate_us ) )
             perror("usleep");
-            serial_close( &serial->sr );
-            cleanup( &tx, &rx, serial, flow, driverlib );
-            return EXIT_FAILURE;
-          }
   
           if( flow->network ){
             sem_post( &flow->rx_done );
             printf("[%d] waiting for reading ... ", getpid( ));
             sem_wait( &flow->rx_wait );
           }
+
+          if( signal_flag )
+            shutdown( getppid( ) );
         }
     
         if( flow->network ){
@@ -340,11 +364,8 @@ main( int argc, char **argv ){
             result = 1;
           }
 
-          if( result ){
-            serial_close( &serial->sr );
-            cleanup( NULL, &rx, serial, flow, driverlib );
-            return EXIT_FAILURE;
-          }
+          if( result )
+            shutdown( getppid( ) );          
 
           sem_post( &rx.buf->available );
           sem_wait( &rx.buf->empty );
@@ -352,56 +373,45 @@ main( int argc, char **argv ){
       }
       else{
         while( 1 != (result = serial_wait( serial, pollrate_ms ) ) ){
-          if( -1 == usleep( pollrate_us ) ){
+          if( -1 == usleep( pollrate_us ) )
             perror("usleep");
-            serial_close( &serial->sr );
-            cleanup( &tx, NULL, serial, flow, driverlib );
-            return EXIT_SUCCESS;
-          }
   
           if( flow->network ){
             sem_post( &flow->tx_done );
             printf("[%d] waiting for writting ... ", getpid( ));
             sem_wait( &flow->tx_wait );
-          } 
+          }
+          
+          if( signal_flag )
+            shutdown( proc2 );
         }
-   
+
         if( flow->network ){
           sem_post( &flow->tx_done );
           printf("[%d] waiting for writting ... ", getpid( ));
           sem_wait( &flow->tx_wait );
         }
-        
+
         sem_post( &tx.buf->empty);
         sem_wait( &tx.buf->available );
 
         // Give to the driver the information that arrived from the nic, let him decide what to do with it
         if( -1 == driver.dwrite( tx.buf ) ){                                           
           printf("[%d] Driver reported an error during write operation, closing...\n", getpid( ) );
-          serial_close( &serial->sr );
-          cleanup( &tx, NULL, serial, flow, driverlib );
-          return EXIT_FAILURE;
+          shutdown( proc2 );
         }
 
         size_t len = serial_write( &serial->sr, tx.buf->data , tx.buf->len );
         fflush( serial->sr.fp );
       }
-        
+    
       if( signal_flag ){
-        if( -1 == driver.dexit( ) )                                         
-          printf("[%d] Driver reported an error during exit, closing...\n", getpid( ) );
-
-        serial_close( &serial->sr );
-        cleanup( &tx, &rx, serial, flow, driverlib );
-  
-        if( !proc )
-          kill( getppid( ), SIGTERM );
+        if( !proc2 )
+          shutdown( getppid( ) );
         else
-          kill( proc, SIGTERM );
-  
-        printf("[%d] Controller interrupted with signal (dwrite/dread)...\n", getpid( ) );
-        return EXIT_SUCCESS;
-      }  
+          shutdown( proc2 );
+      }
+
     }
   }
 
@@ -411,27 +421,34 @@ main( int argc, char **argv ){
     // Driver development loop
     if( -1 == driver.dloop( flow ) ){                                           
       printf("[%d] Driver reported an error during loop, closing...\n", getpid( ) );
-      result = 1;
+      result = 1;        
     }
 
-    if( signal_flag ){
+    if( signal_flag )
       printf("[%d] Controller driver loop interrupted with signal...\n", getpid( ) );
-      result = 1;
-    }  
+ 
+    if( signal_flag || result ){
+      printf("[%d] Killing the process %d...\n", getpid( ), proc);
+      kill( proc, SIGTERM );
+      waitpid( proc, NULL, 0 );      
 
-    if( result ){
+      printf("[%d] Driver executing dexit...\n", getpid( ));
+      if( -1 == driver.dexit( ) )                                         
+        printf("[%d] Driver reported an error during exit, closing...\n", getpid( ) );      
+
       serial_close( &serial->sr );
       cleanup( &tx, &rx, serial, flow, driverlib );
-
-      kill( proc, SIGTERM );
-      for( uint8_t i = 0 ; i < 2 ; ++i ){
-        waitpid( -1, NULL, 0 );      
-        usleep( 1000 );
-      }
-
+        
       printf("[%d] Controller driver loop closed...\n", getpid( ) );
-      return EXIT_SUCCESS;
     }
+
+    if( result ){
+      printf("[%d] Killing the process %d...\n", getpid( ), getppid( ) );
+      kill( getppid( ), SIGTERM );    
+    }
+
+    if( signal_flag || result )
+      return EXIT_SUCCESS;
     
   }
 }

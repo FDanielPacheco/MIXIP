@@ -173,10 +173,9 @@ check_mixip_pattern( const char * str ){
   char * rx = strstr( str, "rx" );
 
   if( !tx && !rx ){
-    // How can the program arrive at this point without adding the driver role, return error
-    printf("Neither tx or rx was found on the string (%s)...\n", str);
-    errno = EINVAL;
-    return -1;
+    // The user selected default, for example
+    // printf("Neither tx or rx was found on the string (%s)...\n", str);
+    return IS_TRANSMITTER;
   }
 
   if( (NULL != tx) && (NULL != rx) ){

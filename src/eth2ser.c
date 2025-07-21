@@ -273,6 +273,7 @@ main( int argc, char **argv ){
     for( ; ; ){
       for( ; ; ){
         printf("[%d] Capture from NIC process with a %d ring buffer and compact to %d bytes segments ...\n", getpid( ), parameters.tra->size_rb, parameters.tra->size_sls );
+        fflush( stdout );
 
         frame.len = (size_t) read( nic, frame.data, sizeof(frame.data) ); 
         if( 0 < frame.len ){
@@ -360,6 +361,10 @@ main( int argc, char **argv ){
           return EXIT_SUCCESS;
         }
       }
+      if( signal_flag ){
+        printf("[%d] eth2ser process 2 closed...\n", getpid( ) );
+        return EXIT_SUCCESS;
+      }
     }
 
   }
@@ -373,6 +378,13 @@ main( int argc, char **argv ){
     nframes = 0;
     uint8_t ring_buffer_size = parameters.tra->size_rb;
     for( ; ; ){
+      if( signal_flag ){
+        kill( proc, SIGTERM );
+        cleanup( serial, queue, &parameters );
+        printf("[%d] eth2ser process 1 closed...\n", getpid( ) );
+        return EXIT_SUCCESS;
+      }
+
       sem_wait( &queue->sem );  
       
       if( 0 < queue->nframes ){
@@ -411,13 +423,6 @@ main( int argc, char **argv ){
       }
     }
 
-    if( signal_flag ){
-      kill( proc, SIGTERM );
-      waitpid( proc, NULL, 0 );      
-      cleanup( serial, queue, &parameters );
-      printf("[%d] eth2ser process 1 closed...\n", getpid( ) );
-      return EXIT_SUCCESS;
-    }
   }
    
 }
